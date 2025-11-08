@@ -20,7 +20,7 @@
 }
 
 body {
-    font-family: 'Fredoka', 'Baloo 2', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--bg-primary);
     color: var(--text-primary);
     line-height: 1.6;
@@ -58,13 +58,12 @@ body {
 }
 
 .logo-text {
-    font-family: 'Baloo 2', 'Fredoka', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: 2px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 24px;
+    font-weight: 400;
+    letter-spacing: 0;
     color: var(--text-primary);
     line-height: 1;
-    text-transform: uppercase;
 }
 
 .auth-section {
@@ -204,7 +203,7 @@ body {
 }
 
 .hero-title {
-    font-family: 'Baloo 2', 'Fredoka', cursive;
+    font-family: 'Playfair Display', serif;
     font-size: 64px;
     font-weight: 600;
     margin-bottom: 20px;
@@ -369,7 +368,7 @@ body {
 }
 
 .results-title {
-    font-family: 'Baloo 2', 'Fredoka', cursive;
+    font-family: 'Playfair Display', serif;
     font-size: 36px;
     font-weight: 600;
 }
@@ -498,7 +497,7 @@ body {
 }
 
 .quote-text {
-    font-family: 'Baloo 2', 'Fredoka', cursive;
+    font-family: 'Playfair Display', serif;
     font-size: 28px;
     font-weight: 500;
     font-style: italic;

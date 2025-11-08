@@ -1,4 +1,4 @@
-# Rift - AI Playlist Generator
+# Drift - AI Playlist Generator
 
 A modern web application that generates Spotify playlists based on mood descriptions using AI. Inspired by the sleek designs of GAFFA, Sony Music, and Epidemic Sound.
 
@@ -51,8 +51,7 @@ The app will be available at `http://127.0.0.1:5000`
 
 ## Project Structure
 
-```
-Rift/
+Drift/
 ├── app.py                 # Flask backend
 ├── templates/
 │   └── index.html         # Main HTML template
