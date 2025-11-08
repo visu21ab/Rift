@@ -5,10 +5,8 @@ A modern web application that generates Spotify playlists based on mood descript
 ## Features
 
 - 🎵 **AI-Powered Playlist Generation**: Describe your mood and get a curated playlist
-- 🎨 **Modern UI**: Sleek, dark design inspired by music industry leaders
 - 📊 **Analytics**: View indie track percentage and genre diversity scores
 - 🔐 **Spotify Integration**: Seamless OAuth authentication
-- ⚡ **Real-time Generation**: Watch your playlist come to life
 
 ## Setup
 
