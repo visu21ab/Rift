@@ -10,4 +10,7 @@ fastapi
 uvicorn
 gunicorn
 psycopg[binary]
+bcrypt<4
+passlib[bcrypt]
+
 
