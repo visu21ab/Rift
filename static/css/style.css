@@ -1,3 +1,4 @@
+
 :root {
     --bg-primary: #fefbf4;
     --bg-secondary: #fefbf4;
@@ -7,6 +8,8 @@
     --text-muted: #8a8a8a;
     --accent-blue: #161616;
     --accent-blue-hover: #000000;
+    --accent-orange: #d4986a;
+    --accent-green: #90c4a8;
     --border-color: rgba(10, 10, 10, 0.05);
     --shadow: rgba(0, 0, 0, 0.08);
     --brand-black: #161616;
@@ -41,7 +44,7 @@ body {
 }
 
 .top-banner-link {
-    color: #fff;
+    color: #ffffff;
     font-size: 12px;
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -52,13 +55,6 @@ body {
     text-decoration: underline;
 }
 
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 24px;
-}
-
-/* Header */
 .header {
     padding: 28px 0;
     border-bottom: none;
@@ -91,7 +87,6 @@ body {
     line-height: 1;
     text-transform: uppercase;
 }
-
 
 .auth-section {
     display: flex;
@@ -182,54 +177,6 @@ body {
     position: relative;
 }
 
-.hero-decoration {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 24px;
-    animation: float 3s ease-in-out infinite;
-}
-
-.decoration-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-    animation: pulse 2s ease-in-out infinite;
-}
-
-.decoration-dot {
-    background: var(--accent-orange);
-}
-
-.decoration-dot:nth-child(2) {
-    animation-delay: 0.3s;
-}
-
-.decoration-dot:nth-child(3) {
-    animation-delay: 0.6s;
-}
-
-@keyframes float {
-    0%, 100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-10px);
-    }
-}
-
-@keyframes pulse {
-    0%, 100% {
-        opacity: 0.6;
-        transform: scale(1);
-    }
-    50% {
-        opacity: 1;
-        transform: scale(1.2);
-    }
-}
-
 .hero-title {
     font-family: 'Playfair Display', serif;
     font-size: 64px;
@@ -246,7 +193,6 @@ body {
     margin: 0 auto 24px;
     animation: fadeInUp 0.8s ease-out 0.2s both;
 }
-
 
 @keyframes fadeInUp {
     from {
@@ -372,30 +318,6 @@ body {
     animation: fadeIn 0.5s ease;
 }
 
-.info-section {
-    max-width: 900px;
-    margin: 60px auto 0;
-    padding: 0 16px;
-    text-align: center;
-}
-
-.section-heading {
-    font-family: 'Playfair Display', serif;
-    font-size: 28px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--brand-black);
-    margin-bottom: 16px;
-}
-
-.section-copy {
-    max-width: 620px;
-    margin: 0 auto;
-    font-size: 16px;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-}
-
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -443,9 +365,6 @@ body {
     font-size: 36px;
     font-weight: 700;
     margin-bottom: 8px;
-}
-
-.metric-card .metric-value {
     color: var(--accent-blue);
 }
 
@@ -509,6 +428,31 @@ body {
     color: var(--text-secondary);
 }
 
+/* About Section */
+.info-section {
+    max-width: 900px;
+    margin: 80px auto 0;
+    padding: 0 16px;
+    text-align: center;
+}
+
+.section-heading {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--brand-black);
+    margin-bottom: 16px;
+}
+
+.section-copy {
+    max-width: 620px;
+    margin: 0 auto;
+    font-size: 16px;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
 /* Error Message */
 .error-message {
     max-width: 700px;
@@ -520,6 +464,42 @@ body {
     color: #ff6b6b;
     text-align: center;
     animation: fadeIn 0.3s ease;
+}
+
+/* Quote Footer */
+.quote-footer {
+    width: 100%;
+    background: transparent;
+    border-top: 1px solid rgba(10, 10, 10, 0.08);
+    padding: 60px 0;
+    margin-top: 40px;
+}
+
+.quote-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    text-align: center;
+}
+
+.quote-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 500;
+    font-style: italic;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.quote-author {
+    display: block;
+    margin-top: 16px;
+    font-size: 20px;
+    font-style: normal;
+    font-weight: 400;
+    color: var(--text-secondary);
 }
 
 /* Responsive */
@@ -548,6 +528,13 @@ body {
     .metrics-grid {
         grid-template-columns: 1fr;
     }
-    
+
+    .quote-text {
+        font-size: 20px;
+    }
+
+    .quote-footer {
+        padding: 32px 0;
+    }
 }
 
