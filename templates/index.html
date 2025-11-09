@@ -11,7 +11,19 @@
 </head>
 <body>
     <div class="top-banner">
+        {% if user %}
+        <div class="top-banner-info">
+            <span class="top-banner-identity" id="topBannerIdentity">
+                {{ user.spotify_display_name or user.email }}
+            </span>
+            <span class="top-banner-divider">•</span>
+            <span class="top-banner-credits" id="topBannerCredits">
+                Credits: {{ user.credits_remaining }}
+            </span>
+        </div>
+        {% else %}
         <a href="#aboutSection" class="top-banner-link">Learn more about Rift</a>
+        {% endif %}
     </div>
     <div class="container">
         <!-- Header -->
@@ -23,8 +35,6 @@
                 <div class="auth-section" id="authSection">
                     <button class="btn btn-primary" id="loginBtn">Connect Spotify</button>
                     <div class="user-info" id="userInfo" style="display: none;">
-                        <span class="user-name" id="userName"></span>
-                        <span class="user-credits" id="userCredits"></span>
                         {% if user and user.is_admin %}
                         <a href="{{ url_for('admin_dashboard') }}" class="btn btn-admin">Admin</a>
                         {% endif %}
