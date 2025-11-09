@@ -126,7 +126,6 @@ function displayResults(data) {
         const requestedCount = typeof data.requested_track_count === 'number' ? data.requested_track_count : null;
         tracksMetric.textContent = requestedCount ? `${data.tracks_found}/${requestedCount}` : data.tracks_found;
     }
-
     const userCredits = document.getElementById('userCredits');
     if (userCredits && typeof data.credits_remaining === 'number') {
         userCredits.textContent = `Credits: ${data.credits_remaining}`;

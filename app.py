@@ -45,7 +45,6 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000")
 DEFAULT_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-
 MODEL_PROMPT_TEMPLATE = """
 You are a music curator whose task is to suggest songs and artists based only on the user's full mood description.
 
