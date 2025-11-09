@@ -26,7 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const mood = document.getElementById('mood').value.trim();
             const playlistName = document.getElementById('playlistName').value.trim() || 'AI Generated Playlist';
-            
+            const trackCountInput = document.getElementById('trackCount');
+            const requestedTrackCount = trackCountInput ? parseInt(trackCountInput.value, 10) : 25;
+            const trackCount = Math.max(1, Math.min(50, isNaN(requestedTrackCount) ? 25 : requestedTrackCount));
+
             if (!mood) {
                 showError('Please enter a mood description');
                 return;
@@ -54,7 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     body: JSON.stringify({
                         mood: mood,
-                        playlist_name: playlistName
+                        playlist_name: playlistName,
+                        track_count: trackCount
                     })
                 });
                 
@@ -121,7 +125,10 @@ function displayResults(data) {
     const tracksMetric = document.getElementById('tracksMetric');
     if (indieMetric) indieMetric.textContent = `${data.metrics.indie_fraction}%`;
     if (diversityMetric) diversityMetric.textContent = data.metrics.diversity_score.toFixed(2);
-    if (tracksMetric) tracksMetric.textContent = data.tracks_found;
+    if (tracksMetric) {
+        const requestedCount = typeof data.requested_track_count === 'number' ? data.requested_track_count : null;
+        tracksMetric.textContent = requestedCount ? `${data.tracks_found}/${requestedCount}` : data.tracks_found;
+    }
     
     // Update Spotify link
     const spotifyLink = document.getElementById('spotifyLink');
