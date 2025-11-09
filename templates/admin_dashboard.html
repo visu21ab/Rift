@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rift – Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 24px;
+        }
+        .admin-table th,
+        .admin-table td {
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            text-align: left;
+        }
+        .admin-table th {
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.18em;
+            color: var(--text-muted);
+        }
+        .admin-controls {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 24px;
+            align-items: flex-end;
+        }
+        .admin-badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: rgba(22, 22, 22, 0.08);
+            color: var(--brand-black);
+        }
+        .credits-input {
+            width: 80px;
+            padding: 6px 10px;
+            border: 1px solid rgba(0,0,0,0.12);
+            background: #fff;
+            text-align: center;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-text">Rift.</span>
+                </div>
+                <div class="auth-section">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to app</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section class="info-section" style="margin-top: 40px;">
+                <h3 class="section-heading">Admin Console</h3>
+                <p class="section-copy">Manage invitations, credits, and track activity.</p>
+            </section>
+
+            <div class="form-container" style="max-width: 960px; margin-top: 20px;">
+                <form id="inviteForm" class="playlist-form" style="background: rgba(0,0,0,0.02); padding: 24px; border-radius: 16px;">
+                    <div class="form-group" style="text-align: left;">
+                        <label for="inviteEmail" class="form-label" style="text-align: left;">Invite email</label>
+                        <input type="email" id="inviteEmail" name="inviteEmail" class="form-input" placeholder="guest@example.com" required>
+                    </div>
+                    <div class="form-group" style="text-align: left;">
+                        <label for="inviteCredits" class="form-label" style="text-align: left;">Credits</label>
+                        <input type="number" id="inviteCredits" name="inviteCredits" class="form-input" min="1" max="50" value="3">
+                        <p class="form-hint" style="text-align: left;">New users start with this many playlist generations.</p>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="align-self: flex-start;">Send invite</button>
+                    <div id="inviteMessage" class="form-hint" style="display: none;"></div>
+                </form>
+            </div>
+
+            <div class="form-container" style="max-width: 960px; margin-top: 40px;">
+                <table class="admin-table" id="usersTable">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Credits</th>
+                            <th>Spotify</th>
+                            <th>Usage</th>
+                            <th>Role</th>
+                            <th>Updated</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 32px;" id="usersTablePlaceholder">Loading users…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchUsers();
+
+            const inviteForm = document.getElementById('inviteForm');
+            inviteForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const email = document.getElementById('inviteEmail').value.trim();
+                const credits = parseInt(document.getElementById('inviteCredits').value, 10) || 3;
+                const messageEl = document.getElementById('inviteMessage');
+
+                try {
+                    const resp = await fetch('/api/admin/invite', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, credits })
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.error || 'Failed to send invite');
+                    messageEl.textContent = `Invitation sent to ${email}`;
+                    messageEl.style.display = 'block';
+                    messageEl.style.color = 'var(--accent-blue)';
+                    inviteForm.reset();
+                } catch (error) {
+                    messageEl.textContent = error.message;
+                    messageEl.style.display = 'block';
+                    messageEl.style.color = '#d74949';
+                }
+            });
+        });
+
+        async function fetchUsers() {
+            try {
+                const resp = await fetch('/api/admin/users');
+                const data = await resp.json();
+                renderUsers(data.users || []);
+            } catch (error) {
+                console.error('Failed to load users', error);
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.querySelector('#usersTable tbody');
+            tbody.innerHTML = '';
+
+            if (!users.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 7;
+                cell.textContent = 'No users yet.';
+                cell.style.textAlign = 'center';
+                cell.style.padding = '28px';
+                row.appendChild(cell);
+                tbody.appendChild(row);
+                return;
+            }
+
+            users.forEach(user => {
+                const row = document.createElement('tr');
+
+                const emailCell = document.createElement('td');
+                emailCell.textContent = user.email;
+                row.appendChild(emailCell);
+
+                const creditsCell = document.createElement('td');
+                const creditsInput = document.createElement('input');
+                creditsInput.type = 'number';
+                creditsInput.value = user.credits_remaining;
+                creditsInput.min = 0;
+                creditsInput.max = 99;
+                creditsInput.className = 'credits-input';
+                creditsInput.addEventListener('change', () => updateCredits(user.id, creditsInput.value));
+                creditsCell.appendChild(creditsInput);
+                row.appendChild(creditsCell);
+
+                const spotifyCell = document.createElement('td');
+                spotifyCell.textContent = user.spotify_display_name || '—';
+                row.appendChild(spotifyCell);
+
+                const usageCell = document.createElement('td');
+                usageCell.textContent = `${user.usage_count} playlists`;
+                row.appendChild(usageCell);
+
+                const roleCell = document.createElement('td');
+                if (user.is_admin) {
+                    const badge = document.createElement('span');
+                    badge.className = 'admin-badge';
+                    badge.textContent = 'Admin';
+                    roleCell.appendChild(badge);
+                } else {
+                    roleCell.textContent = 'User';
+                }
+                row.appendChild(roleCell);
+
+                const updatedCell = document.createElement('td');
+                updatedCell.textContent = user.last_updated ? new Date(user.last_updated).toLocaleString() : '—';
+                row.appendChild(updatedCell);
+
+                const actionsCell = document.createElement('td');
+                const makeAdminBtn = document.createElement('button');
+                makeAdminBtn.className = 'btn btn-secondary';
+                makeAdminBtn.textContent = user.is_admin ? 'Remove admin' : 'Make admin';
+                makeAdminBtn.addEventListener('click', () => toggleAdmin(user.id, !user.is_admin));
+                actionsCell.appendChild(makeAdminBtn);
+                row.appendChild(actionsCell);
+
+                tbody.appendChild(row);
+            });
+        }
+
+        async function updateCredits(userId, credits) {
+            try {
+                await fetch(`/api/admin/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credits_remaining: credits })
+                });
+            } catch (error) {
+                console.error('Failed to update credits', error);
+                fetchUsers();
+            }
+        }
+
+        async function toggleAdmin(userId, isAdmin) {
+            try {
+                await fetch(`/api/admin/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_admin: isAdmin })
+                });
+                fetchUsers();
+            } catch (error) {
+                console.error('Failed to update admin flag', error);
+            }
+        }
+    </script>
+</body>
+</html>
+

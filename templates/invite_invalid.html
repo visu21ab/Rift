@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rift – Invite Not Available</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-text">Rift.</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container" style="max-width: 520px;">
+                <div class="playlist-form" style="gap: 24px;">
+                    <h2 class="hero-title" style="font-size: 34px;">Invite not available</h2>
+                    <p class="form-hint" style="font-style: normal;">
+                        This invitation link has expired or was already used. Please contact the team to request a new invite.
+                    </p>
+                    <a href="{{ url_for('auth_login') }}" class="btn btn-primary" style="justify-content: center;">Back to sign in</a>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
+

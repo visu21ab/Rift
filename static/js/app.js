@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (loginBtn) {
         loginBtn.addEventListener('click', () => {
-            window.location.href = '/login';
+            window.location.href = '/spotify/connect';
         });
     }
     
@@ -88,33 +88,30 @@ async function checkAuthStatus() {
     try {
         const response = await fetch('/api/auth-status');
         const data = await response.json();
-        
-        if (data.authenticated) {
-            showUserInfo(data.display_name);
-        } else {
-            showLoginButton();
+
+        if (!data.authenticated) {
+            window.location.href = '/login';
+            return;
         }
+
+        updateUserHeader(data);
     } catch (error) {
         console.error('Error checking auth status:', error);
     }
 }
 
-// Show login button
-function showLoginButton() {
-    const loginBtn = document.getElementById('loginBtn');
-    const userInfo = document.getElementById('userInfo');
-    if (loginBtn) loginBtn.style.display = 'inline-flex';
-    if (userInfo) userInfo.style.display = 'none';
-}
-
-// Show user info
-function showUserInfo(displayName) {
+function updateUserHeader(data) {
     const loginBtn = document.getElementById('loginBtn');
     const userInfo = document.getElementById('userInfo');
     const userName = document.getElementById('userName');
-    if (loginBtn) loginBtn.style.display = 'none';
+    const userCredits = document.getElementById('userCredits');
+
     if (userInfo) userInfo.style.display = 'flex';
-    if (userName) userName.textContent = displayName || 'User';
+    if (loginBtn) loginBtn.style.display = data.spotify_connected ? 'none' : 'inline-flex';
+    if (userName) userName.textContent = data.spotify_display_name || data.email || 'User';
+    if (userCredits && typeof data.credits_remaining === 'number') {
+        userCredits.textContent = `Credits: ${data.credits_remaining}`;
+    }
 }
 
 // Display results
@@ -128,6 +125,10 @@ function displayResults(data) {
     if (tracksMetric) {
         const requestedCount = typeof data.requested_track_count === 'number' ? data.requested_track_count : null;
         tracksMetric.textContent = requestedCount ? `${data.tracks_found}/${requestedCount}` : data.tracks_found;
+    }
+    const userCredits = document.getElementById('userCredits');
+    if (userCredits && typeof data.credits_remaining === 'number') {
+        userCredits.textContent = `Credits: ${data.credits_remaining}`;
     }
     
     // Update Spotify link

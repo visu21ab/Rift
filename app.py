@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, g
 from flask_session import Session
 import requests
 import json
@@ -10,6 +10,13 @@ from collections import Counter
 import math
 import ast
 from functools import wraps
+from datetime import datetime, timedelta
+import secrets
+import smtplib
+from email.message import EmailMessage
+
+from flask_sqlalchemy import SQLAlchemy
+from passlib.hash import bcrypt
 
 # Load environment variables
 load_dotenv()
@@ -17,7 +24,11 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///drift.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 Session(app)
+
+db = SQLAlchemy(app)
 
 # Spotify API credentials
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -29,6 +40,11 @@ SCOPES = "playlist-modify-private playlist-modify-public user-read-private"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+GMAIL_USERNAME = os.getenv("GMAIL_USERNAME")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000")
+DEFAULT_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
+DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 MODEL_PROMPT_TEMPLATE = """
 You are a music curator whose task is to suggest songs and artists based only on the user's full mood description.
 
@@ -40,6 +56,210 @@ Rules:
 5. Return a Python dictionary (not JSON) with this structure:
    {{"tracks": [{{"artist": "Artist Name", "track": "Track Name"}}, ...]}}
 """
+
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
+    credits_remaining = db.Column(db.Integer, default=3)
+    spotify_user_id = db.Column(db.String(255))
+    spotify_display_name = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    usages = db.relationship("PlaylistUsage", backref="user", lazy=True)
+
+    def set_password(self, password: str) -> None:
+        self.password_hash = bcrypt.hash(password)
+
+    def check_password(self, password: str) -> bool:
+        try:
+            return bcrypt.verify(password, self.password_hash)
+        except ValueError:
+            return False
+
+
+class Invite(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=False)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    credits = db.Column(db.Integer, default=3)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    accepted_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def is_valid(self) -> bool:
+        if self.accepted_at:
+            return False
+        if self.expires_at and datetime.utcnow() > self.expires_at:
+            return False
+        return True
+
+
+class PlaylistUsage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    mood = db.Column(db.Text, nullable=True)
+    spotify_playlist_id = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+with app.app_context():
+    db.create_all()
+    if DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD:
+        existing_admin = User.query.filter_by(email=DEFAULT_ADMIN_EMAIL).first()
+        if not existing_admin:
+            admin_user = User(
+                email=DEFAULT_ADMIN_EMAIL,
+                is_admin=True,
+                credits_remaining=9999
+            )
+            admin_user.set_password(DEFAULT_ADMIN_PASSWORD)
+            db.session.add(admin_user)
+            db.session.commit()
+
+
+def get_current_user():
+    user_id = session.get('user_id')
+    if not user_id:
+        return None
+    return db.session.get(User, user_id)
+
+
+@app.before_request
+def load_logged_in_user():
+    g.user = get_current_user()
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if g.user is None:
+            next_url = request.path if request.method == 'GET' else url_for('index')
+            return redirect(url_for('auth_login', next=next_url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if g.user is None or not g.user.is_admin:
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Admin access required'}), 403
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def send_invite_email(email: str, token: str, credits: int) -> None:
+    if not GMAIL_USERNAME or not GMAIL_APP_PASSWORD:
+        raise RuntimeError("Email credentials are not configured. Set GMAIL_USERNAME and GMAIL_APP_PASSWORD.")
+
+    invite_link = f"{APP_BASE_URL.rstrip('/')}/invite/{token}"
+    subject = "You're invited to Rift"
+    body = (
+        f"Hi,\n\n"
+        f"You have been invited to try Rift. Use the link below to create your account.\n\n"
+        f"Invitation link: {invite_link}\n"
+        f"You will receive {credits} playlist credits to get started.\n\n"
+        f"If you did not expect this invite, you can safely ignore this email.\n\n"
+        f"— Rift Team"
+    )
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = GMAIL_USERNAME
+    message["To"] = email
+    message.set_content(body)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(GMAIL_USERNAME, GMAIL_APP_PASSWORD)
+        smtp.send_message(message)
+
+
+def generate_invite(email: str, credits: int, expires_in_days: int = 7) -> Invite:
+    token = secrets.token_urlsafe(24)
+    invite = Invite(
+        email=email.strip().lower(),
+        token=token,
+        credits=max(1, credits),
+        expires_at=datetime.utcnow() + timedelta(days=expires_in_days)
+    )
+    db.session.add(invite)
+    db.session.commit()
+    return invite
+
+
+def _is_safe_redirect(target: str) -> bool:
+    if not target:
+        return False
+    host_url = urllib.parse.urlparse(request.host_url)
+    redirect_url = urllib.parse.urlparse(urllib.parse.urljoin(request.host_url, target))
+    return redirect_url.scheme in ('http', 'https') and host_url.netloc == redirect_url.netloc
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def auth_login():
+    if g.user:
+        return redirect(url_for('index'))
+
+    error = None
+    next_url_candidate = request.args.get('next') or request.form.get('next') or None
+    next_url = next_url_candidate if _is_safe_redirect(next_url_candidate) else url_for('index')
+
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        password = request.form.get('password') or ''
+
+        user = User.query.filter_by(email=email).first()
+        if user and user.check_password(password):
+            session.clear()
+            session['user_id'] = user.id
+            return redirect(next_url)
+        else:
+            error = "Invalid email or password."
+
+    return render_template('auth_login.html', error=error, next=next_url)
+
+
+@app.route('/invite/<token>', methods=['GET', 'POST'])
+def accept_invite(token):
+    invite = Invite.query.filter_by(token=token).first()
+    if not invite or not invite.is_valid():
+        return render_template('invite_invalid.html')
+
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password') or ''
+        confirm = request.form.get('confirm_password') or ''
+
+        if len(password) < 8:
+            error = "Password must be at least 8 characters long."
+        elif password != confirm:
+            error = "Passwords do not match."
+        else:
+            user = User.query.filter_by(email=invite.email).first()
+            if user:
+                user.set_password(password)
+                user.credits_remaining = invite.credits
+            else:
+                user = User(
+                    email=invite.email,
+                    credits_remaining=invite.credits
+                )
+                user.set_password(password)
+                db.session.add(user)
+
+            invite.accepted_at = datetime.utcnow()
+            db.session.commit()
+
+            session.clear()
+            session['user_id'] = user.id
+            return redirect(url_for('index'))
+
+    return render_template('invite_accept.html', invite=invite, error=error)
 
 
 def refresh_spotify_token():
@@ -88,20 +308,24 @@ def require_spotify_auth(f):
     """Decorator to require Spotify authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if g.user is None:
+            return jsonify({'error': 'Not authenticated'}), 401
         if 'spotify_access_token' not in session:
-            return jsonify({'error': 'Not authenticated with Spotify'}), 401
+            return jsonify({'error': 'Spotify account not connected'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
 
 @app.route('/')
+@login_required
 def index():
-    """Main page"""
-    return render_template('index.html')
+    """Main page (requires authenticated user)"""
+    return render_template('index.html', user=g.user)
 
 
-@app.route('/login')
-def login():
+@app.route('/spotify/connect')
+@login_required
+def spotify_connect():
     """Initiate Spotify OAuth flow"""
     auth_url = "https://accounts.spotify.com/authorize?" + urllib.parse.urlencode({
         "client_id": CLIENT_ID,
@@ -114,6 +338,7 @@ def login():
 
 
 @app.route('/callback')
+@login_required
 def callback():
     """Handle Spotify OAuth callback"""
     code = request.args.get('code')
@@ -144,25 +369,108 @@ def callback():
         me = r.json()
         session['spotify_user_id'] = me.get('id')
         session['spotify_display_name'] = me.get('display_name')
+        g.user.spotify_user_id = me.get('id')
+        g.user.spotify_display_name = me.get('display_name')
+        db.session.commit()
     
     return redirect(url_for('index'))
 
 
 @app.route('/logout')
+@login_required
 def logout():
     """Logout user and clear session"""
     session.clear()
-    return redirect(url_for('index'))
+    return redirect(url_for('auth_login'))
 
 
 @app.route('/api/auth-status')
 def auth_status():
     """Check if user is authenticated"""
+    user = g.user
     return jsonify({
-        'authenticated': 'spotify_access_token' in session,
-        'user_id': session.get('spotify_user_id'),
-        'display_name': session.get('spotify_display_name')
+        'authenticated': user is not None,
+        'email': user.email if user else None,
+        'is_admin': bool(user.is_admin) if user else False,
+        'credits_remaining': user.credits_remaining if user else 0,
+        'spotify_connected': 'spotify_access_token' in session,
+        'spotify_display_name': user.spotify_display_name if user else None
     })
+
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    return render_template('admin_dashboard.html')
+
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def admin_list_users():
+    users = User.query.order_by(User.created_at.desc()).all()
+    results = []
+    for user in users:
+        results.append({
+            'id': user.id,
+            'email': user.email,
+            'credits_remaining': user.credits_remaining,
+            'is_admin': user.is_admin,
+            'spotify_display_name': user.spotify_display_name,
+            'created_at': user.created_at.isoformat(),
+            'last_updated': user.updated_at.isoformat() if user.updated_at else None,
+            'usage_count': len(user.usages)
+        })
+    return jsonify({'users': results})
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PATCH'])
+@admin_required
+def admin_update_user(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    data = request.get_json(force=True)
+    credits = data.get('credits_remaining')
+    if credits is not None:
+        try:
+            credits = int(credits)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'credits_remaining must be an integer'}), 400
+        user.credits_remaining = max(0, credits)
+
+    if 'is_admin' in data and g.user.id != user.id:
+        user.is_admin = bool(data.get('is_admin'))
+
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/invite', methods=['POST'])
+@admin_required
+def admin_send_invite():
+    data = request.get_json(force=True)
+    email = (data.get('email') or '').strip().lower()
+    credits = data.get('credits') or 3
+
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+
+    try:
+        credits = int(credits)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'credits must be a number'}), 400
+
+    invite = generate_invite(email, credits)
+
+    try:
+        send_invite_email(email, invite.token, invite.credits)
+    except Exception as exc:
+        db.session.delete(invite)
+        db.session.commit()
+        return jsonify({'error': f'Failed to send invite email: {exc}'}), 500
+
+    return jsonify({'success': True})
 
 
 @app.route('/api/generate-playlist', methods=['POST'])
@@ -183,6 +491,9 @@ def generate_playlist():
     
     if not mood:
         return jsonify({'error': 'Mood description is required'}), 400
+
+    if g.user.credits_remaining <= 0:
+        return jsonify({'error': 'You have no playlist credits remaining.'}), 403
     
     try:
         # Step 1: Get tracks from GPT
@@ -249,6 +560,16 @@ def generate_playlist():
         access_token = session.get('spotify_access_token')
         indie_pct = indie_fraction(track_uris, access_token, threshold=50)
         diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
+
+        # Record usage & update credits
+        g.user.credits_remaining = max(0, g.user.credits_remaining - 1)
+        usage = PlaylistUsage(
+            user_id=g.user.id,
+            mood=mood,
+            spotify_playlist_id=playlist_id
+        )
+        db.session.add(usage)
+        db.session.commit()
         
         return jsonify({
             'success': True,
@@ -263,6 +584,7 @@ def generate_playlist():
                 'diversity_score': round(diversity_score, 2),
                 'genre_counts': dict(genre_counts)
             },
+            'credits_remaining': g.user.credits_remaining,
             'requested_track_count': track_count,
             'spotify_url': f"https://open.spotify.com/playlist/{playlist_id}"
         })

@@ -27,6 +27,13 @@ SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:5000/callback
 OPENAI_API_KEY=your_openai_api_key
+GMAIL_USERNAME=your_gmail_address@gmail.com
+GMAIL_APP_PASSWORD=your_gmail_app_password
+ADMIN_EMAIL=founder@example.com
+ADMIN_PASSWORD=choose_a_strong_password
+APP_BASE_URL=http://127.0.0.1:5000
+# Optional: override to use a different database
+# DATABASE_URL=sqlite:///drift.db
 ```
 
 **Important**: 
@@ -43,11 +50,21 @@ The app will be available at `http://127.0.0.1:5000`
 
 ## Usage
 
-1. Click "Connect Spotify" to authenticate
-2. Enter a mood description (e.g., "jämtland mountain electronic female indie")
-3. Optionally customize the playlist name
-4. Click "Generate Playlist"
-5. View your results and open the playlist in Spotify
+1. Sign in with an invited email + password
+2. Connect your Spotify account via the header button
+3. Enter a mood description (e.g., "jämtland mountain electronic female indie")
+4. Optionally customize the playlist name and desired track count (max 50)
+5. Click "Generate Playlist" to create it directly in Spotify
+
+Each user has a configurable credit allowance that limits how many playlists can be generated.
+
+## Invitations & Admin Dashboard
+
+- The first admin user is created automatically from `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+- Admins can send invites (with custom credit quotas) from `/admin`
+- Invitation emails are sent through Gmail SMTP using the configured credentials
+- Invite links let users set their password and automatically assign their starting credits
+- Admins can adjust credits or promote additional admins from the interactive user table
 
 ## Project Structure
 

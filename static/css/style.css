@@ -106,6 +106,11 @@ body {
     font-size: 14px;
 }
 
+.user-credits {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
 /* Buttons */
 .btn {
     padding: 12px 24px;
@@ -142,6 +147,17 @@ body {
 .btn-secondary:hover {
     background: #000000;
     color: #ffffff;
+}
+
+.btn-admin {
+    background: transparent;
+    color: var(--accent-blue);
+    border: 1px solid rgba(15, 44, 130, 0.2);
+}
+
+.btn-admin:hover {
+    background: rgba(15, 44, 130, 0.08);
+    color: var(--accent-blue);
 }
 
 .btn-large {
