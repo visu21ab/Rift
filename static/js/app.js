@@ -105,14 +105,17 @@ function updateUserHeader(data) {
     const userInfo = document.getElementById('userInfo');
     const topBannerIdentity = document.getElementById('topBannerIdentity');
     const topBannerCredits = document.getElementById('topBannerCredits');
+    const userName = document.getElementById('userName');
+    const userCredits = document.getElementById('userCredits');
 
     if (userInfo) userInfo.style.display = 'flex';
     if (loginBtn) loginBtn.style.display = data.spotify_connected ? 'none' : 'inline-flex';
-    if (topBannerIdentity) {
-        topBannerIdentity.textContent = data.spotify_display_name || data.email || 'User';
-    }
-    if (topBannerCredits && typeof data.credits_remaining === 'number') {
-        topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
+    const displayName = data.spotify_display_name || data.email || 'User';
+    if (topBannerIdentity) topBannerIdentity.textContent = displayName;
+    if (userName) userName.textContent = displayName;
+    if (typeof data.credits_remaining === 'number') {
+        if (topBannerCredits) topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
+        if (userCredits) userCredits.textContent = `Credits: ${data.credits_remaining}`;
     }
 }
 
@@ -129,8 +132,11 @@ function displayResults(data) {
         tracksMetric.textContent = requestedCount ? `${data.tracks_found}/${requestedCount}` : data.tracks_found;
     }
     const topBannerCredits = document.getElementById('topBannerCredits');
-    if (topBannerCredits && typeof data.credits_remaining === 'number') {
-        topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
+    const userCredits = document.getElementById('userCredits');
+    if (typeof data.credits_remaining === 'number') {
+        if (topBannerCredits) topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
+        if (userCredits) userCredits.textContent = `Credits: ${data.credits_remaining}`;
+    }
     }
     
     // Update Spotify link
