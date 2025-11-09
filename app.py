@@ -338,7 +338,6 @@ def spotify_connect():
 
 
 @app.route('/callback')
-@login_required
 def callback():
     """Handle Spotify OAuth callback"""
     code = request.args.get('code')
