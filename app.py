@@ -33,7 +33,7 @@ db = SQLAlchemy(app)
 # Spotify API credentials
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:5000/callback")
+REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://t-pauz.onrender.com/callback")
 SCOPES = "playlist-modify-private playlist-modify-public user-read-private"
 
 # OpenAI setup
