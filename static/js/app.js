@@ -137,7 +137,6 @@ function displayResults(data) {
         if (topBannerCredits) topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
         if (userCredits) userCredits.textContent = `Credits: ${data.credits_remaining}`;
     }
-    }
     
     // Update Spotify link
     const spotifyLink = document.getElementById('spotifyLink');
