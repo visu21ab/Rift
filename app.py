@@ -340,34 +340,10 @@ def spotify_connect():
 @app.route('/callback')
 @login_required
 def callback():
+    """Handle Spotify OAuth callback"""
     code = request.args.get('code')
     if not code:
-        return "Access denied", 400
-
-    # Exchange code for tokens
-    token_url = "https://accounts.spotify.com/api/token"
-    resp = requests.post(token_url, data={
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": REDIRECT_URI,
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET
-    })
-
-    if resp.status_code != 200:
-        return f"Token exchange failed: {resp.text}", 400
-
-    tokens = resp.json()
-    session['spotify_access_token'] = tokens['access_token']
-    session['spotify_refresh_token'] = tokens.get('refresh_token')
-
-    # Attach tokens to logged-in user if exists
-    user = get_current_user()
-    if user:
-        user.spotify_user_id = tokens.get('access_token')  # or fetch user info
-        db.session.commit()
-
-    return redirect(url_for('index'))
+        return redirect(url_for('index', error='access_denied'))
     
     # Exchange code for tokens
     token_url = "https://accounts.spotify.com/api/token"
