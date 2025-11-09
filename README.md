@@ -5,8 +5,10 @@ A modern web application that generates Spotify playlists based on mood descript
 ## Features
 
 - 🎵 **AI-Powered Playlist Generation**: Describe your mood and get a curated playlist
+- 🎨 **Modern UI**: Sleek, dark design inspired by music industry leaders
 - 📊 **Analytics**: View indie track percentage and genre diversity scores
 - 🔐 **Spotify Integration**: Seamless OAuth authentication
+- ⚡ **Real-time Generation**: Watch your playlist come to life
 
 ## Setup
 
@@ -16,6 +18,16 @@ A modern web application that generates Spotify playlists based on mood descript
 pip install -r requirements.txt
 ```
 
+### 2. Configure Environment Variables
+
+Make sure your `.env` file contains:
+
+```env
+SPOTIFY_CLIENT_ID=your_spotify_client_id
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:5000/callback
+OPENAI_API_KEY=your_openai_api_key
+```
 
 **Important**: 
 - Update your Spotify app's redirect URI in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) to match `http://127.0.0.1:5000/callback`
