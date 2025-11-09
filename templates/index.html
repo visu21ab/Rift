@@ -66,6 +66,20 @@
                         >
                     </div>
 
+                    <div class="form-group">
+                        <label for="trackCount" class="form-label">Number of Tracks</label>
+                        <input
+                            type="number"
+                            id="trackCount"
+                            name="trackCount"
+                            class="form-input"
+                            min="1"
+                            max="50"
+                            value="25"
+                        >
+                        <p class="form-hint">Pick between 1 and 50 tracks for your playlist.</p>
+                    </div>
+
                     <button type="submit" class="btn btn-primary btn-large" id="generateBtn">
                         <span class="btn-text">Generate Playlist</span>
                         <span class="btn-loader" style="display: none;">
@@ -103,7 +117,7 @@
                         </div>
                         <div class="metric-card">
                             <div class="metric-value" id="tracksMetric">--</div>
-                            <div class="metric-label">Tracks Found</div>
+                            <div class="metric-label">Tracks Added</div>
                         </div>
                     </div>
 
@@ -126,12 +140,6 @@
         </main>
     </div>
 
-    <!-- Quote Section -->
-    <footer class="quote-footer">
-        <div class="quote-content">
-            <p class="quote-text">"I created Rift to get me off my beaten path in music. I love discovering new creators and content, and I needed a tool where I could use my words as curation. Try it out"<br><span class="quote-author">— Original Rifter</span></p>
-        </div>
-    </footer>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

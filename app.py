@@ -29,16 +29,16 @@ SCOPES = "playlist-modify-private playlist-modify-public user-read-private"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-MODEL_PROMPT = """
-You are a music curator whose task is to suggest songs and artists based only on the user's full mood description. 
+MODEL_PROMPT_TEMPLATE = """
+You are a music curator whose task is to suggest songs and artists based only on the user's full mood description.
 
 Rules:
 1. Prioritize the user's full description.
 2. Ignore popularity or mainstream success — small, indie, or lesser-known artists are extremely preferred.
-3. Provide a mix of different artists that match the description. 
-4. A total of 25 tracks. 
+3. Provide a mix of different artists that match the description.
+4. Provide exactly {track_count} distinct tracks unless the user explicitly asks for fewer.
 5. Return a Python dictionary (not JSON) with this structure:
-   {"tracks": [{"artist": "Artist Name", "track": "Track Name"}, ...]}
+   {{"tracks": [{{"artist": "Artist Name", "track": "Track Name"}}, ...]}}
 """
 
 
@@ -172,13 +172,28 @@ def generate_playlist():
     data = request.json
     mood = data.get('mood', '').strip()
     playlist_name = data.get('playlist_name', 'AI Generated Playlist').strip()
+    track_count = data.get('track_count', 25)
+    
+    try:
+        track_count = int(track_count)
+    except (ValueError, TypeError):
+        track_count = 25
+    
+    track_count = max(1, min(50, track_count))
     
     if not mood:
         return jsonify({'error': 'Mood description is required'}), 400
     
     try:
         # Step 1: Get tracks from GPT
-        results_dict = get_tracks_from_gpt(mood)
+        results_dict = get_tracks_from_gpt(mood, track_count)
+        tracks_from_gpt = results_dict.get("tracks", [])
+        if not isinstance(tracks_from_gpt, list):
+            raise ValueError("Unexpected response format from curator model.")
+        tracks_from_gpt = tracks_from_gpt[:track_count]
+        
+        if not tracks_from_gpt:
+            return jsonify({'error': 'No tracks returned from curator model'}), 400
         
         # Step 2: Search Spotify for tracks
         access_token = get_valid_access_token()
@@ -190,7 +205,7 @@ def generate_playlist():
         found_tracks = []
         not_found = []
         
-        for t in results_dict["tracks"]:
+        for t in tracks_from_gpt:
             track_name = t["track"]
             artist_name = t["artist"]
             # Get fresh token in case it was refreshed
@@ -248,6 +263,7 @@ def generate_playlist():
                 'diversity_score': round(diversity_score, 2),
                 'genre_counts': dict(genre_counts)
             },
+            'requested_track_count': track_count,
             'spotify_url': f"https://open.spotify.com/playlist/{playlist_id}"
         })
         
@@ -256,12 +272,13 @@ def generate_playlist():
 
 
 # Helper functions from notebook
-def get_tracks_from_gpt(user_prompt: str):
+def get_tracks_from_gpt(user_prompt: str, track_count: int):
     """Ask GPT for tracks and return them directly as a Python dictionary."""
+    system_prompt = MODEL_PROMPT_TEMPLATE.format(track_count=track_count)
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": MODEL_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
         temperature=0.3,
