@@ -11,7 +11,19 @@
 </head>
 <body>
     <div class="top-banner">
+        {% if user %}
+        <div class="top-banner-info">
+            <span class="top-banner-identity" id="topBannerIdentity">
+                {{ user.spotify_display_name or user.email }}
+            </span>
+            <span class="top-banner-divider">•</span>
+            <span class="top-banner-credits" id="topBannerCredits">
+                Credits: {{ user.credits_remaining }}
+            </span>
+        </div>
+        {% else %}
         <a href="#aboutSection" class="top-banner-link">Learn more about Rift</a>
+        {% endif %}
     </div>
     <div class="container">
         <!-- Header -->
