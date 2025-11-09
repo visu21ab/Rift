@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rift – Activate Invite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-text">Rift.</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <form method="post" class="playlist-form">
+                    <h2 class="hero-title" style="font-size: 32px; margin-bottom: 12px;">Activate your invite</h2>
+                    <p class="form-hint" style="margin-bottom: 24px;">Invited for: <strong>{{ invite.email }}</strong><br>Credits available: {{ invite.credits }}</p>
+                    {% if error %}
+                    <div class="error-message" style="display: block;">{{ error }}</div>
+                    {% endif %}
+                    <div class="form-group">
+                        <label for="password" class="form-label">Choose a password</label>
+                        <input type="password" id="password" name="password" class="form-input" required minlength="8" placeholder="Create a password">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password" class="form-label">Confirm password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" class="form-input" required minlength="8" placeholder="Repeat password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-large">Create account</button>
+                </form>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
+

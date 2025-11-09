@@ -21,9 +21,13 @@
                     <span class="logo-text">Rift.</span>
                 </div>
                 <div class="auth-section" id="authSection">
-                    <button class="btn btn-primary" id="loginBtn">Connect Account</button>
+                    <button class="btn btn-primary" id="loginBtn">Connect Spotify</button>
                     <div class="user-info" id="userInfo" style="display: none;">
                         <span class="user-name" id="userName"></span>
+                        <span class="user-credits" id="userCredits"></span>
+                        {% if user and user.is_admin %}
+                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-admin">Admin</a>
+                        {% endif %}
                         <button class="btn btn-secondary" id="logoutBtn">Logout</button>
                     </div>
                 </div>
