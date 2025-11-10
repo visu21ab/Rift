@@ -64,7 +64,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     credits_remaining = db.Column(db.Integer, default=3)
-    spotify_user_id = db.Column(db.String(255))
+    spotify_user_id = db.Column(db.Text)
     spotify_display_name = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
