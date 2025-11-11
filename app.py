@@ -42,6 +42,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 GMAIL_USERNAME = os.getenv("GMAIL_USERNAME")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+INVITE_EMAIL_ENABLED = os.getenv("INVITE_EMAIL_ENABLED", "").lower() in ("1", "true", "yes", "on")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000")
 DEFAULT_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
@@ -465,7 +466,7 @@ def admin_send_invite():
     invite_link = f"{APP_BASE_URL.rstrip('/')}/invite/{invite.token}"
 
     email_sent = False
-    if GMAIL_USERNAME and GMAIL_APP_PASSWORD:
+    if INVITE_EMAIL_ENABLED and GMAIL_USERNAME and GMAIL_APP_PASSWORD:
         try:
             send_invite_email(email, invite.token, invite.credits)
             email_sent = True
