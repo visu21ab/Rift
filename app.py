@@ -462,15 +462,29 @@ def admin_send_invite():
         return jsonify({'error': 'credits must be a number'}), 400
 
     invite = generate_invite(email, credits)
+    invite_link = f"{APP_BASE_URL.rstrip('/')}/invite/{invite.token}"
 
-    try:
-        send_invite_email(email, invite.token, invite.credits)
-    except Exception as exc:
-        db.session.delete(invite)
-        db.session.commit()
-        return jsonify({'error': f'Failed to send invite email: {exc}'}), 500
+    email_sent = False
+    if GMAIL_USERNAME and GMAIL_APP_PASSWORD:
+        try:
+            send_invite_email(email, invite.token, invite.credits)
+            email_sent = True
+        except Exception as exc:
+            app.logger.exception("Failed to send invite email", exc_info=True)
 
-    return jsonify({'success': True})
+    if not email_sent:
+        return jsonify({
+            'success': True,
+            'email_sent': False,
+            'invite_link': invite_link,
+            'message': 'Email not sent; share the invite link manually.'
+        })
+
+    return jsonify({
+        'success': True,
+        'email_sent': True,
+        'invite_link': invite_link
+    })
 
 
 @app.route('/api/generate-playlist', methods=['POST'])

@@ -128,9 +128,15 @@
                     });
                     const data = await resp.json();
                     if (!resp.ok) throw new Error(data.error || 'Failed to send invite');
-                    messageEl.textContent = `Invitation sent to ${email}`;
+                    if (data.email_sent) {
+                        messageEl.innerHTML = `Invitation sent to ${email}. Share link if needed: <a href="${data.invite_link}" target="_blank" rel="noopener noreferrer">${data.invite_link}</a>`;
+                        messageEl.style.color = 'var(--accent-blue)';
+                    } else {
+                        const info = data.message || 'Email not sent. Share this invite link manually:';
+                        messageEl.innerHTML = `${info} <a href="${data.invite_link}" target="_blank" rel="noopener noreferrer">${data.invite_link}</a>`;
+                        messageEl.style.color = '#b8860b';
+                    }
                     messageEl.style.display = 'block';
-                    messageEl.style.color = 'var(--accent-blue)';
                     inviteForm.reset();
                 } catch (error) {
                     messageEl.textContent = error.message;
