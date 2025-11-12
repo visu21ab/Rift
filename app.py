@@ -602,11 +602,19 @@ def generate_playlist():
         access_token = session.get('spotify_access_token')
         add_tracks_to_playlist(playlist_id, track_uris, access_token)
         
-        # Step 5: Calculate metrics
+        # Step 5: Calculate metrics (non-blocking - don't fail if this times out)
         # Get fresh token in case it was refreshed
         access_token = session.get('spotify_access_token')
-        indie_pct = indie_fraction(track_uris, access_token, threshold=50)
-        diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
+        indie_pct = 0.0
+        diversity_score = 0.0
+        genre_counts = {}
+        try:
+            indie_pct = indie_fraction(track_uris, access_token, threshold=50)
+            diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
+        except Exception as metrics_error:
+            # Metrics calculation failed, but playlist was created successfully
+            # Use default values so we can still return success
+            pass
 
         # Record usage & update credits
         new_credits = max(0, g.user.credits_remaining - 1)
