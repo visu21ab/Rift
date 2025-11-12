@@ -368,6 +368,13 @@ def index():
     return render_template('index.html', user=g.user)
 
 
+@app.route('/privacy')
+def privacy():
+    """Privacy policy page (public)"""
+    from datetime import datetime
+    return render_template('privacy.html', current_date=datetime.now().strftime('%B %d, %Y'), user=g.user if hasattr(g, 'user') else None)
+
+
 @app.route('/spotify/connect')
 @login_required
 def spotify_connect():

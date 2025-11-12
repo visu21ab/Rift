@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy – Rift</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <a href="{{ url_for('index') }}" style="text-decoration: none; color: inherit;">
+                        <span class="logo-text">Rift.</span>
+                    </a>
+                </div>
+                <div class="auth-section">
+                    {% if user %}
+                    <a href="{{ url_for('logout') }}" class="btn btn-secondary">Sign Out</a>
+                    {% else %}
+                    <a href="{{ url_for('auth_login') }}" class="btn btn-secondary">Sign In</a>
+                    {% endif %}
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section class="info-section" style="margin-top: 40px; max-width: 800px; margin-left: auto; margin-right: auto;">
+                <h1 class="hero-title" style="font-size: 48px; margin-bottom: 24px;">Privacy Policy</h1>
+                <p class="section-copy" style="color: var(--text-muted); margin-bottom: 40px;">
+                    <em>Last updated: {{ current_date }}</em>
+                </p>
+
+                <div style="line-height: 1.8; color: var(--text-primary);">
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">1. Who We Are</h2>
+                    <p class="section-copy">
+                        Rift is a beta service operated by Viktoria Sundelin. This privacy policy explains how we collect, use, and protect your personal information when you use our playlist generation service.
+                    </p>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">2. Information We Collect</h2>
+                    <p class="section-copy">
+                        We collect the following information:
+                    </p>
+                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
+                        <li style="margin-bottom: 8px;"><strong>Account Information:</strong> Email address, encrypted password, and account creation/update timestamps.</li>
+                        <li style="margin-bottom: 8px;"><strong>Spotify Integration:</strong> Spotify user ID and display name (when you connect your Spotify account).</li>
+                        <li style="margin-bottom: 8px;"><strong>Usage Data:</strong> Spotify playlist IDs for playlists you create through our service, associated with your account ID and timestamps.</li>
+                        <li style="margin-bottom: 8px;"><strong>Playlist Prompts:</strong> The mood descriptions and prompts you enter when generating playlists. These are stored anonymously (without your user ID) for service improvement purposes.</li>
+                        <li style="margin-bottom: 8px;"><strong>Service Data:</strong> Credits remaining, admin status, and invitation tokens (for beta access management).</li>
+                    </ul>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">3. How We Use Your Information</h2>
+                    <p class="section-copy">
+                        We use the information we collect to:
+                    </p>
+                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
+                        <li style="margin-bottom: 8px;">Provide and maintain our playlist generation service</li>
+                        <li style="margin-bottom: 8px;">Authenticate your account and manage your access</li>
+                        <li style="margin-bottom: 8px;">Track your playlist credits and usage</li>
+                        <li style="margin-bottom: 8px;">Connect to your Spotify account to create playlists</li>
+                        <li style="margin-bottom: 8px;">Improve our service by analyzing anonymous playlist prompts</li>
+                        <li style="margin-bottom: 8px;">Send invitation emails for beta access (if email is enabled)</li>
+                    </ul>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">4. Data Storage and Security</h2>
+                    <p class="section-copy">
+                        Your data is stored on secure servers hosted by Render (USA/EU) and Supabase (PostgreSQL database). We use industry-standard security measures including:
+                    </p>
+                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
+                        <li style="margin-bottom: 8px;">Encrypted password storage (bcrypt hashing)</li>
+                        <li style="margin-bottom: 8px;">Secure database connections (SSL/TLS)</li>
+                        <li style="margin-bottom: 8px;">Restricted access to personal data</li>
+                    </ul>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">5. Data Sharing</h2>
+                    <p class="section-copy">
+                        We do not sell, rent, or share your personal information with third parties except:
+                    </p>
+                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
+                        <li style="margin-bottom: 8px;"><strong>Spotify:</strong> We use Spotify's API to create playlists in your account. This requires sharing your Spotify user ID and playlist creation requests with Spotify.</li>
+                        <li style="margin-bottom: 8px;"><strong>Service Providers:</strong> We use Render for hosting and Supabase for database services. These providers process data under strict confidentiality agreements.</li>
+                        <li style="margin-bottom: 8px;"><strong>Legal Requirements:</strong> We may disclose information if required by law or to protect our rights.</li>
+                    </ul>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">6. Data Retention</h2>
+                    <p class="section-copy">
+                        We retain your data for as long as your account is active. You can request deletion of your account and associated data at any time by contacting us. Anonymous playlist prompts may be retained longer for service improvement purposes.
+                    </p>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">7. Your Rights</h2>
+                    <p class="section-copy">
+                        Depending on your location, you have the right to:
+                    </p>
+                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
+                        <li style="margin-bottom: 8px;">Access the personal data we hold about you</li>
+                        <li style="margin-bottom: 8px;">Request correction of inaccurate data</li>
+                        <li style="margin-bottom: 8px;">Request deletion of your account and data</li>
+                        <li style="margin-bottom: 8px;">Withdraw consent for data processing</li>
+                        <li style="margin-bottom: 8px;">Export your data in a portable format</li>
+                    </ul>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">8. Cookies and Session Data</h2>
+                    <p class="section-copy">
+                        We use server-side sessions to maintain your login state. These sessions are stored securely and expire when you sign out or after a period of inactivity.
+                    </p>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">9. Children's Privacy</h2>
+                    <p class="section-copy">
+                        Our service is not intended for users under the age of 16. We do not knowingly collect personal information from children under 16.
+                    </p>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">10. Changes to This Policy</h2>
+                    <p class="section-copy">
+                        We may update this privacy policy from time to time. We will notify you of any material changes by updating the "Last updated" date at the top of this page.
+                    </p>
+
+                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">11. Contact Us</h2>
+                    <p class="section-copy">
+                        If you have questions about this privacy policy or wish to exercise your rights, please contact us at the email address provided in your invitation or through the admin dashboard.
+                    </p>
+                </div>
+
+                <div style="margin-top: 48px; padding-top: 32px; border-top: 1px solid rgba(0,0,0,0.1);">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to App</a>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
+
