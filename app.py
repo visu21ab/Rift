@@ -118,8 +118,14 @@ class Invite(db.Model):
 class PlaylistUsage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    mood = db.Column(db.Text, nullable=True)
     spotify_playlist_id = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PlaylistPrompt(db.Model):
+    """Anonymous storage of playlist prompts (no user_id)"""
+    id = db.Column(db.Integer, primary_key=True)
+    prompt = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -587,7 +593,7 @@ def generate_playlist():
         playlist_id = create_spotify_playlist(
             user_id, 
             playlist_name, 
-            f"Generated from mood: {mood}",
+            "AI-generated playlist",
             access_token
         )
         
@@ -608,10 +614,16 @@ def generate_playlist():
             g.user.credits_remaining = new_credits
             usage = PlaylistUsage(
                 user_id=g.user.id,
-                mood=mood,
                 spotify_playlist_id=playlist_id
             )
             db.session.add(usage)
+            
+            # Store prompt anonymously (no user_id)
+            prompt_record = PlaylistPrompt(
+                prompt=mood
+            )
+            db.session.add(prompt_record)
+            
             db.session.commit()
         except Exception as db_error:
             # If database commit fails, rollback and try once more
@@ -622,10 +634,16 @@ def generate_playlist():
                 g.user.credits_remaining = new_credits
                 usage = PlaylistUsage(
                     user_id=g.user.id,
-                    mood=mood,
                     spotify_playlist_id=playlist_id
                 )
                 db.session.add(usage)
+                
+                # Store prompt anonymously (no user_id)
+                prompt_record = PlaylistPrompt(
+                    prompt=mood
+                )
+                db.session.add(prompt_record)
+                
                 db.session.commit()
             except Exception:
                 # If retry also fails, log but don't fail the request
