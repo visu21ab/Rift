@@ -31,7 +31,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Configure connection pooling for PostgreSQL
 if database_url.startswith(('postgres://', 'postgresql://')):
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': 5,
+        'pool_size': 3,  # Reduced from 5 to avoid Supabase limits
+        'max_overflow': 0,  # No extra connections beyond pool_size
         'pool_recycle': 300,  # Recycle connections after 5 minutes
         'pool_pre_ping': True,  # Verify connections before using
         'connect_args': {
@@ -163,6 +164,15 @@ def get_current_user():
 @app.before_request
 def load_logged_in_user():
     g.user = get_current_user()
+
+
+@app.teardown_request
+def close_db_session(exception):
+    """Close database session after each request to prevent connection leaks."""
+    try:
+        db.session.remove()
+    except Exception:
+        pass
 
 
 def login_required(f):
