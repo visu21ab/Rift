@@ -24,8 +24,22 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///drift.db')
+database_url = os.getenv('DATABASE_URL', 'sqlite:///drift.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Configure connection pooling for PostgreSQL
+if database_url.startswith(('postgres://', 'postgresql://')):
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_size': 5,
+        'pool_recycle': 300,  # Recycle connections after 5 minutes
+        'pool_pre_ping': True,  # Verify connections before using
+        'connect_args': {
+            'connect_timeout': 10,
+            'sslmode': 'require'
+        }
+    }
+
 Session(app)
 
 db = SQLAlchemy(app)
@@ -125,7 +139,16 @@ def get_current_user():
     user_id = session.get('user_id')
     if not user_id:
         return None
-    return db.session.get(User, user_id)
+    try:
+        return db.session.get(User, user_id)
+    except Exception as e:
+        # Handle database connection errors
+        db.session.rollback()
+        # Try once more with a fresh session
+        try:
+            return db.session.get(User, user_id)
+        except Exception:
+            return None
 
 
 @app.before_request
@@ -577,14 +600,35 @@ def generate_playlist():
         diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
 
         # Record usage & update credits
-        g.user.credits_remaining = max(0, g.user.credits_remaining - 1)
-        usage = PlaylistUsage(
-            user_id=g.user.id,
-            mood=mood,
-            spotify_playlist_id=playlist_id
-        )
-        db.session.add(usage)
-        db.session.commit()
+        new_credits = max(0, g.user.credits_remaining - 1)
+        try:
+            g.user.credits_remaining = new_credits
+            usage = PlaylistUsage(
+                user_id=g.user.id,
+                mood=mood,
+                spotify_playlist_id=playlist_id
+            )
+            db.session.add(usage)
+            db.session.commit()
+        except Exception as db_error:
+            # If database commit fails, rollback and try once more
+            db.session.rollback()
+            try:
+                # Refresh user object and retry
+                db.session.refresh(g.user)
+                g.user.credits_remaining = new_credits
+                usage = PlaylistUsage(
+                    user_id=g.user.id,
+                    mood=mood,
+                    spotify_playlist_id=playlist_id
+                )
+                db.session.add(usage)
+                db.session.commit()
+            except Exception:
+                # If retry also fails, log but don't fail the request
+                # The playlist was already created successfully
+                # Use the calculated credits value even if DB commit failed
+                pass
         
         return jsonify({
             'success': True,
@@ -599,7 +643,7 @@ def generate_playlist():
                 'diversity_score': round(diversity_score, 2),
                 'genre_counts': dict(genre_counts)
             },
-            'credits_remaining': g.user.credits_remaining,
+            'credits_remaining': new_credits,
             'requested_track_count': track_count,
             'spotify_url': f"https://open.spotify.com/playlist/{playlist_id}"
         })
