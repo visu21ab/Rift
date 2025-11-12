@@ -29,12 +29,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configure connection pooling for PostgreSQL
+# Supabase connection pooler has strict limits - use minimal pool
 if database_url.startswith(('postgres://', 'postgresql://')):
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': 3,  # Reduced from 5 to avoid Supabase limits
+        'pool_size': 1,  # Minimal for Supabase connection pooler limits
         'max_overflow': 0,  # No extra connections beyond pool_size
-        'pool_recycle': 300,  # Recycle connections after 5 minutes
+        'pool_recycle': 180,  # Recycle connections after 3 minutes (faster cleanup)
         'pool_pre_ping': True,  # Verify connections before using
+        'pool_timeout': 5,  # Wait up to 5 seconds for a connection
         'connect_args': {
             'connect_timeout': 10,
             'sslmode': 'require'
@@ -612,18 +614,19 @@ def generate_playlist():
         access_token = session.get('spotify_access_token')
         add_tracks_to_playlist(playlist_id, track_uris, access_token)
         
-        # Step 5: Calculate metrics (non-blocking - don't fail if this times out)
+        # Step 5: Calculate metrics using efficient batch API calls
         # Get fresh token in case it was refreshed
         access_token = session.get('spotify_access_token')
         indie_pct = 0.0
         diversity_score = 0.0
         genre_counts = {}
         try:
+            # Batch API calls: 1-2 calls instead of 25-50 individual calls
             indie_pct = indie_fraction(track_uris, access_token, threshold=50)
             diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
         except Exception as metrics_error:
-            # Metrics calculation failed, but playlist was created successfully
-            # Use default values so we can still return success
+            # If metrics fail, use defaults but don't fail the request
+            # Playlist was already created successfully
             pass
 
         # Record usage & update credits
@@ -890,19 +893,112 @@ def get_spotify_artist(artist_id, access_token):
     return r.json()
 
 
+def get_tracks_batch(track_ids, access_token):
+    """Fetch multiple tracks in a single API call (max 50 tracks per request)."""
+    if not track_ids:
+        return []
+    
+    # Spotify API allows up to 50 IDs per request
+    batch_size = 50
+    all_tracks = []
+    
+    for i in range(0, len(track_ids), batch_size):
+        batch = track_ids[i:i+batch_size]
+        ids_param = ','.join(batch)
+        url = f"https://api.spotify.com/v1/tracks?ids={ids_param}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        try:
+            r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.Timeout:
+            raise Exception("Spotify API request timed out. Please try again.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Error connecting to Spotify API: {str(e)}")
+        
+        # If token expired, refresh and retry
+        if r.status_code == 401:
+            new_token = refresh_spotify_token()
+            if new_token:
+                headers = {"Authorization": f"Bearer {new_token}"}
+                try:
+                    r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                except requests.exceptions.Timeout:
+                    raise Exception("Spotify API request timed out. Please try again.")
+                except requests.exceptions.RequestException as e:
+                    raise Exception(f"Error connecting to Spotify API: {str(e)}")
+            else:
+                r.raise_for_status()
+        
+        r.raise_for_status()
+        tracks_data = r.json().get("tracks", [])
+        all_tracks.extend(tracks_data)
+    
+    return all_tracks
+
+
+def get_artists_batch(artist_ids, access_token):
+    """Fetch multiple artists in a single API call (max 50 artists per request)."""
+    if not artist_ids:
+        return []
+    
+    # Remove duplicates and limit to 50 per batch
+    unique_artist_ids = list(dict.fromkeys(artist_ids))  # Preserves order, removes duplicates
+    batch_size = 50
+    all_artists = []
+    
+    for i in range(0, len(unique_artist_ids), batch_size):
+        batch = unique_artist_ids[i:i+batch_size]
+        ids_param = ','.join(batch)
+        url = f"https://api.spotify.com/v1/artists?ids={ids_param}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        try:
+            r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.Timeout:
+            raise Exception("Spotify API request timed out. Please try again.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Error connecting to Spotify API: {str(e)}")
+        
+        # If token expired, refresh and retry
+        if r.status_code == 401:
+            new_token = refresh_spotify_token()
+            if new_token:
+                headers = {"Authorization": f"Bearer {new_token}"}
+                try:
+                    r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                except requests.exceptions.Timeout:
+                    raise Exception("Spotify API request timed out. Please try again.")
+                except requests.exceptions.RequestException as e:
+                    raise Exception(f"Error connecting to Spotify API: {str(e)}")
+            else:
+                r.raise_for_status()
+        
+        r.raise_for_status()
+        artists_data = r.json().get("artists", [])
+        all_artists.extend(artists_data)
+    
+    return all_artists
+
+
 def indie_fraction(track_uris, access_token, threshold=50):
-    """Calculate fraction of indie tracks (popularity < threshold)."""
+    """Calculate fraction of indie tracks (popularity < threshold) using efficient batch API."""
     if not track_uris:
-        return 0
+        return 0.0
+    
+    # Extract track IDs from URIs
+    track_ids = [uri.split(":")[-1] for uri in track_uris]
+    
+    # Fetch all tracks in batch(es) - 1-2 API calls instead of 25-50
+    tracks_data = get_tracks_batch(track_ids, access_token)
+    
+    if not tracks_data:
+        return 0.0
     
     count_indie = 0
-    total = 0
+    total = len(tracks_data)
     
-    for uri in track_uris:
-        track_id = uri.split(":")[-1]
-        track_data = get_spotify_track(track_id, access_token)
-        popularity = track_data.get("popularity", 0)
-        total += 1
+    for track in tracks_data:
+        popularity = track.get("popularity", 0)
         if popularity < threshold:
             count_indie += 1
     
@@ -910,23 +1006,27 @@ def indie_fraction(track_uris, access_token, threshold=50):
 
 
 def genre_diversity(artist_ids, access_token):
-    """Calculate genre diversity score."""
+    """Calculate genre diversity score using efficient batch API."""
     if not artist_ids:
         return 0.0, {}
     
-    all_genres = []
+    # Fetch all artists in batch(es) - 1 API call instead of 25-50
+    artists_data = get_artists_batch(artist_ids, access_token)
     
-    for artist_id in artist_ids:
-        artist_data = get_spotify_artist(artist_id, access_token)
-        genres = artist_data.get("genres", [])
+    if not artists_data:
+        return 0.0, {}
+    
+    all_genres = []
+    for artist in artists_data:
+        genres = artist.get("genres", [])
         all_genres.extend(genres)
+    
+    if not all_genres:
+        return 0.0, {}
     
     genre_counts = Counter(all_genres)
     
     total_genres = len(all_genres)
-    if total_genres == 0:
-        return 0.0, genre_counts
-    
     entropy = 0.0
     for count in genre_counts.values():
         p = count / total_genres

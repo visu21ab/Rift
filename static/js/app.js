@@ -121,12 +121,27 @@ function updateUserHeader(data) {
 
 // Display results
 function displayResults(data) {
-    // Update metrics
+    // Update metrics (with safe access to prevent errors)
     const indieMetric = document.getElementById('indieMetric');
     const diversityMetric = document.getElementById('diversityMetric');
     const tracksMetric = document.getElementById('tracksMetric');
-    if (indieMetric) indieMetric.textContent = `${data.metrics.indie_fraction}%`;
-    if (diversityMetric) diversityMetric.textContent = data.metrics.diversity_score.toFixed(2);
+    
+    if (indieMetric) {
+        if (data.metrics && typeof data.metrics.indie_fraction === 'number') {
+            indieMetric.textContent = `${data.metrics.indie_fraction}%`;
+        } else {
+            indieMetric.textContent = '—';
+        }
+    }
+    
+    if (diversityMetric) {
+        if (data.metrics && typeof data.metrics.diversity_score === 'number') {
+            diversityMetric.textContent = data.metrics.diversity_score.toFixed(2);
+        } else {
+            diversityMetric.textContent = '—';
+        }
+    }
+    
     if (tracksMetric) {
         const requestedCount = typeof data.requested_track_count === 'number' ? data.requested_track_count : null;
         tracksMetric.textContent = requestedCount ? `${data.tracks_found}/${requestedCount}` : data.tracks_found;
