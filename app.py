@@ -50,6 +50,9 @@ CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://t-pauz.onrender.com/callback")
 SCOPES = "playlist-modify-private playlist-modify-public user-read-private"
 
+# Request timeout for external API calls (in seconds)
+REQUEST_TIMEOUT = 15
+
 # OpenAI setup
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -300,7 +303,7 @@ def refresh_spotify_token():
         "refresh_token": refresh_token,
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
-    })
+    }, timeout=REQUEST_TIMEOUT)
     
     if resp.status_code != 200:
         # Refresh token is invalid, clear session
@@ -377,7 +380,7 @@ def callback():
         "redirect_uri": REDIRECT_URI,
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
-    })
+    }, timeout=REQUEST_TIMEOUT)
     
     if resp.status_code != 200:
         return redirect(url_for('index', error='token_exchange_failed'))
@@ -388,7 +391,7 @@ def callback():
     
     # Get user info
     headers = {"Authorization": f"Bearer {session['spotify_access_token']}"}
-    r = requests.get("https://api.spotify.com/v1/me", headers=headers)
+    r = requests.get("https://api.spotify.com/v1/me", headers=headers, timeout=REQUEST_TIMEOUT)
     if r.status_code == 200:
         me = r.json()
         session['spotify_user_id'] = me.get('id')
@@ -684,14 +687,24 @@ def search_spotify_track(track_name, artist_name, access_token):
     headers = {"Authorization": f"Bearer {access_token}"}
     params = {"q": q, "type": "track", "limit": 3}
     
-    r = requests.get(url, headers=headers, params=params)
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("Spotify API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to Spotify API: {str(e)}")
     
     # If token expired, refresh and retry
     if r.status_code == 401:
         new_token = refresh_spotify_token()
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
-            r = requests.get(url, headers=headers, params=params)
+            try:
+                r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("Spotify API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to Spotify API: {str(e)}")
         else:
             raise Exception("Spotify authentication expired. Please reconnect your account.")
     
@@ -724,14 +737,24 @@ def create_spotify_playlist(user_id, name, description, access_token):
         "description": description,
         "public": False
     }
-    r = requests.post(url, headers=headers, json=body)
+    try:
+        r = requests.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("Spotify API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to Spotify API: {str(e)}")
     
     # If token expired, refresh and retry
     if r.status_code == 401:
         new_token = refresh_spotify_token()
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}", "Content-Type": "application/json"}
-            r = requests.post(url, headers=headers, json=body)
+            try:
+                r = requests.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("Spotify API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to Spotify API: {str(e)}")
         else:
             r.raise_for_status()
     
@@ -749,14 +772,24 @@ def add_tracks_to_playlist(playlist_id, track_uris, access_token):
     chunk_size = 100
     for i in range(0, len(track_uris), chunk_size):
         chunk = track_uris[i:i+chunk_size]
-        r = requests.post(url, headers=headers, json={"uris": chunk})
+        try:
+            r = requests.post(url, headers=headers, json={"uris": chunk}, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.Timeout:
+            raise Exception("Spotify API request timed out. Please try again.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Error connecting to Spotify API: {str(e)}")
         
         # If token expired, refresh and retry
         if r.status_code == 401:
             new_token = refresh_spotify_token()
             if new_token:
                 headers = {"Authorization": f"Bearer {new_token}", "Content-Type": "application/json"}
-                r = requests.post(url, headers=headers, json={"uris": chunk})
+                try:
+                    r = requests.post(url, headers=headers, json={"uris": chunk}, timeout=REQUEST_TIMEOUT)
+                except requests.exceptions.Timeout:
+                    raise Exception("Spotify API request timed out. Please try again.")
+                except requests.exceptions.RequestException as e:
+                    raise Exception(f"Error connecting to Spotify API: {str(e)}")
             else:
                 r.raise_for_status()
         
@@ -767,14 +800,24 @@ def get_spotify_track(track_id, access_token):
     """Fetch track info from Spotify."""
     url = f"https://api.spotify.com/v1/tracks/{track_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
-    r = requests.get(url, headers=headers)
+    try:
+        r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("Spotify API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to Spotify API: {str(e)}")
     
     # If token expired, refresh and retry
     if r.status_code == 401:
         new_token = refresh_spotify_token()
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
-            r = requests.get(url, headers=headers)
+            try:
+                r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("Spotify API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to Spotify API: {str(e)}")
         else:
             r.raise_for_status()
     
@@ -786,14 +829,24 @@ def get_spotify_artist(artist_id, access_token):
     """Fetch artist info from Spotify."""
     url = f"https://api.spotify.com/v1/artists/{artist_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
-    r = requests.get(url, headers=headers)
+    try:
+        r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("Spotify API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to Spotify API: {str(e)}")
     
     # If token expired, refresh and retry
     if r.status_code == 401:
         new_token = refresh_spotify_token()
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
-            r = requests.get(url, headers=headers)
+            try:
+                r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("Spotify API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to Spotify API: {str(e)}")
         else:
             r.raise_for_status()
     
