@@ -583,11 +583,28 @@ def generate_playlist():
         not_found = []
         
         for t in tracks_from_gpt:
-            track_name = t["track"]
-            artist_name = t["artist"]
-            # Get fresh token in case it was refreshed
-            access_token = session.get('spotify_access_token')
-            matches = search_spotify_track(track_name, artist_name, access_token)
+            matches = None
+            track_name = ""
+            artist_name = ""
+            try:
+                track_name = t.get("track", "")
+                artist_name = t.get("artist", "")
+                if not track_name or not artist_name:
+                    continue
+                # Get fresh token in case it was refreshed
+                access_token = session.get('spotify_access_token')
+                if not access_token:
+                    raise Exception("Spotify authentication lost. Please reconnect your account.")
+                matches = search_spotify_track(track_name, artist_name, access_token)
+            except KeyError as e:
+                app.logger.warning(f"Unexpected track format: {t}")
+                continue
+            except Exception as e:
+                # If search fails for one track, log and continue with others
+                app.logger.warning(f"Error searching for track {track_name} by {artist_name}: {str(e)}")
+                if track_name and artist_name:
+                    not_found.append({"artist": artist_name, "track": track_name})
+                continue
             
             if matches:
                 track_uris.append(matches[0]["uri"])
@@ -698,7 +715,19 @@ def generate_playlist():
         })
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        # Log the full error for debugging
+        import traceback
+        app.logger.error(f"Error generating playlist: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        # Return user-friendly error message
+        error_message = str(e)
+        if "403" in error_message or "Forbidden" in error_message:
+            error_message = "Spotify access denied. Please click 'Connect Spotify' to reconnect your account."
+        elif "401" in error_message or "Unauthorized" in error_message:
+            error_message = "Spotify authentication expired. Please reconnect your account."
+        elif "timeout" in error_message.lower():
+            error_message = "Request timed out. Please try again."
+        return jsonify({'error': error_message}), 500
 
 
 # Helper functions from notebook
@@ -740,7 +769,7 @@ def search_spotify_track(track_name, artist_name, access_token):
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error connecting to Spotify API: {str(e)}")
     
-    # If token expired, refresh and retry
+    # If token expired (401) or forbidden (403), refresh and retry
     if r.status_code == 401:
         new_token = refresh_spotify_token()
         if new_token:
@@ -753,6 +782,32 @@ def search_spotify_track(track_name, artist_name, access_token):
                 raise Exception(f"Error connecting to Spotify API: {str(e)}")
         else:
             raise Exception("Spotify authentication expired. Please reconnect your account.")
+    elif r.status_code == 403:
+        # 403 Forbidden - token might be invalid or app permissions changed
+        # Try refreshing token first
+        new_token = refresh_spotify_token()
+        if new_token:
+            headers = {"Authorization": f"Bearer {new_token}"}
+            try:
+                r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+                if r.status_code == 403:
+                    # Clear Spotify session to force reconnection
+                    session.pop('spotify_access_token', None)
+                    session.pop('spotify_refresh_token', None)
+                    session.pop('spotify_user_id', None)
+                    session.pop('spotify_display_name', None)
+                    raise Exception("Spotify access denied. Please click 'Connect Spotify' to reconnect your account.")
+            except requests.exceptions.Timeout:
+                raise Exception("Spotify API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to Spotify API: {str(e)}")
+        else:
+            # Clear Spotify session to force reconnection
+            session.pop('spotify_access_token', None)
+            session.pop('spotify_refresh_token', None)
+            session.pop('spotify_user_id', None)
+            session.pop('spotify_display_name', None)
+            raise Exception("Spotify access denied. Please click 'Connect Spotify' to reconnect your account.")
     
     r.raise_for_status()
     
