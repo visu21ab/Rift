@@ -9,6 +9,7 @@ from openai import OpenAI
 from collections import Counter
 import math
 import ast
+import re
 from functools import wraps
 from datetime import datetime, timedelta
 import secrets
@@ -734,6 +735,11 @@ def generate_playlist():
 def get_tracks_from_gpt(user_prompt: str, track_count: int):
     """Ask GPT for tracks and return them directly as a Python dictionary."""
     system_prompt = MODEL_PROMPT_TEMPLATE.format(track_count=track_count)
+    
+    # Calculate max_tokens based on track count (roughly 25-30 tokens per track)
+    estimated_tokens = (track_count * 30) + 50
+    max_tokens = min(max(estimated_tokens, 800), 2000)  # Between 800 and 2000 tokens
+    
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
@@ -741,18 +747,53 @@ def get_tracks_from_gpt(user_prompt: str, track_count: int):
             {"role": "user", "content": user_prompt}
         ],
         temperature=0.3,
-        max_tokens=600
+        max_tokens=max_tokens
     )
     
     text = response.choices[0].message.content.strip()
     
+    # Remove markdown code blocks if present
+    if text.startswith("```"):
+        lines = text.split('\n')
+        if lines[0].startswith('```'):
+            lines = lines[1:]
+        if lines[-1].strip() == '```':
+            lines = lines[:-1]
+        text = '\n'.join(lines).strip()
+    
+    # Try parsing as JSON first (most common format from GPT)
+    try:
+        data = json.loads(text)
+        if not isinstance(data, dict) or "tracks" not in data:
+            raise ValueError("Response missing 'tracks' key")
+        return data
+    except json.JSONDecodeError as json_err:
+        # If JSON is incomplete, try to extract complete track entries
+        app.logger.warning(f"JSON decode error: {str(json_err)}")
+        # Pattern to match complete track entries: {"artist": "...", "track": "..."}
+        track_pattern = r'\{"artist":\s*"[^"]+",\s*"track":\s*"[^"]+"\}'
+        matches = re.findall(track_pattern, text)
+        if matches:
+            # Reconstruct JSON with found tracks
+            tracks_json = ',\n'.join(matches)
+            reconstructed = f'{{"tracks": [{tracks_json}]}}'
+            try:
+                data = json.loads(reconstructed)
+                app.logger.info(f"Recovered {len(data['tracks'])} tracks from incomplete JSON")
+                return data
+            except json.JSONDecodeError:
+                pass
+    
+    # Fallback to Python literal_eval (for Python dict format)
     try:
         data = ast.literal_eval(text)
+        if not isinstance(data, dict) or "tracks" not in data:
+            raise ValueError("Response missing 'tracks' key")
         return data
-    except Exception as e:
-        print("Could not parse GPT response as Python dict.")
-        print(text)
-        raise e
+    except (ValueError, SyntaxError) as e:
+        app.logger.error(f"Could not parse GPT response as JSON or Python dict.")
+        app.logger.error(f"Response text (first 1000 chars): {text[:1000]}")
+        raise ValueError(f"Could not parse GPT response. The response may have been truncated. Please try again with fewer tracks. Error: {str(e)}")
 
 
 def search_spotify_track(track_name, artist_name, access_token):
