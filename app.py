@@ -28,12 +28,19 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 app.config['SESSION_TYPE'] = 'filesystem'
 database_url = os.getenv('DATABASE_URL', 'sqlite:///drift.db')
+
+# Convert postgresql:// URLs to use psycopg3 driver for Python 3.13 compatibility
+if database_url.startswith('postgresql://') or database_url.startswith('postgres://'):
+    # Replace postgresql:// or postgres:// with postgresql+psycopg:// to use psycopg3
+    database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+    database_url = database_url.replace('postgres://', 'postgresql+psycopg://', 1)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configure connection pooling for PostgreSQL
 # Detect if using Supabase connection pooler or direct connection
-if database_url.startswith(('postgres://', 'postgresql://')):
+if database_url.startswith(('postgresql+psycopg://', 'postgres://', 'postgresql://')):
     # Check if using Supabase transaction pooler (pooler.supabase.com or port 6543)
     # vs direct connection (db.supabase.co or port 5432)
     is_transaction_pooler = 'pooler.supabase.com' in database_url or ':6543' in database_url
@@ -47,7 +54,8 @@ if database_url.startswith(('postgres://', 'postgresql://')):
         connect_args = {
             'connect_timeout': 10,
             'sslmode': 'require',
-            'options': '-c statement_timeout=30000'  # 30 second statement timeout
+            'options': '-c statement_timeout=30000',  # 30 second statement timeout
+            'prepared_statement_cache_size': 0  # Disable prepared statements for transaction pooler (psycopg3)
         }
     elif is_direct:
         # Direct connection allows more connections - use larger pool for better performance
