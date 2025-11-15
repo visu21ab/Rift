@@ -54,7 +54,6 @@ if database_url.startswith(('postgresql+psycopg://', 'postgres://', 'postgresql:
         connect_args = {
             'connect_timeout': 10,
             'sslmode': 'require',
-            'options': '-c statement_timeout=30000',  # 30 second statement timeout
             'prepared_statement_cache_size': 0  # Disable prepared statements for transaction pooler (psycopg3)
         }
     elif is_direct:
@@ -198,18 +197,29 @@ class PlaylistPrompt(db.Model):
 
 
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception as e:
+        # Log the error but don't fail startup - tables might already exist
+        app.logger.warning(f"Database initialization warning: {str(e)}")
+        # Try to continue - this might be a transaction pooler limitation
+        pass
+    
     if DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD:
-        existing_admin = User.query.filter_by(email=DEFAULT_ADMIN_EMAIL).first()
-        if not existing_admin:
-            admin_user = User(
-                email=DEFAULT_ADMIN_EMAIL,
-                is_admin=True,
-                credits_remaining=9999
-            )
-            admin_user.set_password(DEFAULT_ADMIN_PASSWORD)
-            db.session.add(admin_user)
-            db.session.commit()
+        try:
+            existing_admin = User.query.filter_by(email=DEFAULT_ADMIN_EMAIL).first()
+            if not existing_admin:
+                admin_user = User(
+                    email=DEFAULT_ADMIN_EMAIL,
+                    is_admin=True,
+                    credits_remaining=9999
+                )
+                admin_user.set_password(DEFAULT_ADMIN_PASSWORD)
+                db.session.add(admin_user)
+                db.session.commit()
+        except Exception as e:
+            app.logger.error(f"Failed to create admin user: {str(e)}")
+            # Don't fail startup if admin creation fails
 
 
 def get_current_user():
