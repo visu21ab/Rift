@@ -41,13 +41,13 @@ if database_url.startswith(('postgres://', 'postgresql://')):
     
     if is_transaction_pooler:
         # Transaction pooler has strict limits and doesn't support PREPARE statements
-        # Use minimal pool and disable prepared statements
+        # Use minimal pool and configure for transaction pooler compatibility
         pool_size = 1
         max_overflow = 0
         connect_args = {
             'connect_timeout': 10,
             'sslmode': 'require',
-            'prepared_statement_cache_size': 0  # Disable prepared statements for transaction pooler
+            'options': '-c statement_timeout=30000'  # 30 second statement timeout
         }
     elif is_direct:
         # Direct connection allows more connections - use larger pool for better performance
