@@ -37,9 +37,9 @@ if database_url.startswith(('postgres://', 'postgresql://')):
         'max_overflow': 0,  # No extra connections beyond pool_size
         'pool_recycle': 180,  # Recycle connections after 3 minutes (faster cleanup)
         'pool_pre_ping': True,  # Verify connections before using
-        'pool_timeout': 5,  # Wait up to 5 seconds for a connection
+        'pool_timeout': 3,  # Wait up to 3 seconds for a connection (reduced to prevent worker timeout)
         'connect_args': {
-            'connect_timeout': 10,
+            'connect_timeout': 5,  # Reduced from 10 to 5 seconds
             'sslmode': 'require'
         }
     }
@@ -155,12 +155,18 @@ def get_current_user():
     try:
         return db.session.get(User, user_id)
     except Exception as e:
-        # Handle database connection errors
-        db.session.rollback()
-        # Try once more with a fresh session
+        # Handle database connection errors gracefully
+        app.logger.warning(f"Database connection error in get_current_user: {str(e)}")
         try:
+            db.session.rollback()
+            # Invalidate the session to force a fresh connection
+            db.session.remove()
+            # Try once more with a fresh session (but don't block too long)
             return db.session.get(User, user_id)
-        except Exception:
+        except Exception as retry_error:
+            app.logger.error(f"Database retry failed: {str(retry_error)}")
+            # Return None to allow the request to continue without user data
+            # This prevents the entire request from failing
             return None
 
 
