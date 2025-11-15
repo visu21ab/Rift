@@ -18,6 +18,8 @@ from email.message import EmailMessage
 
 from flask_sqlalchemy import SQLAlchemy
 from passlib.hash import bcrypt
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Load environment variables
 load_dotenv()
@@ -30,18 +32,47 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configure connection pooling for PostgreSQL
-# Supabase connection pooler has strict limits - use minimal pool
+# Detect if using Supabase connection pooler or direct connection
 if database_url.startswith(('postgres://', 'postgresql://')):
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': 1,  # Minimal for Supabase connection pooler limits
-        'max_overflow': 0,  # No extra connections beyond pool_size
-        'pool_recycle': 180,  # Recycle connections after 3 minutes (faster cleanup)
-        'pool_pre_ping': True,  # Verify connections before using
-        'pool_timeout': 5,  # Wait up to 5 seconds for a connection
-        'connect_args': {
+    # Check if using Supabase transaction pooler (pooler.supabase.com or port 6543)
+    # vs direct connection (db.supabase.co or port 5432)
+    is_transaction_pooler = 'pooler.supabase.com' in database_url or ':6543' in database_url
+    is_direct = 'db.supabase.co' in database_url or ':5432' in database_url
+    
+    if is_transaction_pooler:
+        # Transaction pooler has strict limits and doesn't support PREPARE statements
+        # Use minimal pool and disable prepared statements
+        pool_size = 1
+        max_overflow = 0
+        connect_args = {
+            'connect_timeout': 10,
+            'sslmode': 'require',
+            'prepared_statement_cache_size': 0  # Disable prepared statements for transaction pooler
+        }
+    elif is_direct:
+        # Direct connection allows more connections - use larger pool for better performance
+        pool_size = 5
+        max_overflow = 5
+        connect_args = {
             'connect_timeout': 10,
             'sslmode': 'require'
         }
+    else:
+        # Default for other PostgreSQL databases
+        pool_size = 5
+        max_overflow = 5
+        connect_args = {
+            'connect_timeout': 10,
+            'sslmode': 'require'
+        }
+    
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_size': pool_size,
+        'max_overflow': max_overflow,
+        'pool_recycle': 180,  # Recycle connections after 3 minutes (faster cleanup)
+        'pool_pre_ping': True,  # Verify connections before using
+        'pool_timeout': 5,  # Wait up to 5 seconds for a connection
+        'connect_args': connect_args
     }
 
 Session(app)
@@ -55,7 +86,32 @@ REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://t-pauz.onrender.com/ca
 SCOPES = "playlist-modify-private playlist-modify-public user-read-private"
 
 # Request timeout for external API calls (in seconds)
-REQUEST_TIMEOUT = 15
+# Reduced from 15 to 10 to fail faster and prevent worker timeouts
+REQUEST_TIMEOUT = 10
+
+# Create a requests session with connection pooling and retry strategy
+# This improves performance and reliability for multiple API calls
+retry_strategy = Retry(
+    total=2,  # Maximum 2 retries
+    backoff_factor=0.3,  # Wait 0.3, 0.6 seconds between retries
+    status_forcelist=[429, 500, 502, 503, 504],  # Retry on these status codes
+    allowed_methods=["GET", "POST"]  # Only retry safe methods
+)
+
+adapter = HTTPAdapter(
+    max_retries=retry_strategy,
+    pool_connections=10,  # Number of connection pools to cache
+    pool_maxsize=10,  # Maximum number of connections to save in the pool
+    pool_block=False  # Don't block if pool is full
+)
+
+# Create a session for Spotify API calls
+spotify_session = requests.Session()
+spotify_session.mount("https://", adapter)
+
+# Create a separate session for other API calls (OpenAI, etc.)
+api_session = requests.Session()
+api_session.mount("https://", adapter)
 
 # OpenAI setup
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -317,7 +373,7 @@ def refresh_spotify_token():
         return None
     
     token_url = "https://accounts.spotify.com/api/token"
-    resp = requests.post(token_url, data={
+    resp = spotify_session.post(token_url, data={
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
         "client_id": CLIENT_ID,
@@ -400,7 +456,7 @@ def callback():
     
     # Exchange code for tokens
     token_url = "https://accounts.spotify.com/api/token"
-    resp = requests.post(token_url, data={
+    resp = spotify_session.post(token_url, data={
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": REDIRECT_URI,
@@ -417,7 +473,7 @@ def callback():
     
     # Get user info
     headers = {"Authorization": f"Bearer {session['spotify_access_token']}"}
-    r = requests.get("https://api.spotify.com/v1/me", headers=headers, timeout=REQUEST_TIMEOUT)
+    r = spotify_session.get("https://api.spotify.com/v1/me", headers=headers, timeout=REQUEST_TIMEOUT)
     if r.status_code == 200:
         me = r.json()
         session['spotify_user_id'] = me.get('id')
@@ -804,7 +860,7 @@ def search_spotify_track(track_name, artist_name, access_token):
     params = {"q": q, "type": "track", "limit": 3}
     
     try:
-        r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+        r = spotify_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.Timeout:
         raise Exception("Spotify API request timed out. Please try again.")
     except requests.exceptions.RequestException as e:
@@ -816,7 +872,7 @@ def search_spotify_track(track_name, artist_name, access_token):
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
             try:
-                r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+                r = spotify_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
             except requests.exceptions.Timeout:
                 raise Exception("Spotify API request timed out. Please try again.")
             except requests.exceptions.RequestException as e:
@@ -830,7 +886,7 @@ def search_spotify_track(track_name, artist_name, access_token):
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
             try:
-                r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+                r = spotify_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
                 if r.status_code == 403:
                     # Clear Spotify session to force reconnection
                     session.pop('spotify_access_token', None)
@@ -880,7 +936,7 @@ def create_spotify_playlist(user_id, name, description, access_token):
         "public": False
     }
     try:
-        r = requests.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+        r = spotify_session.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.Timeout:
         raise Exception("Spotify API request timed out. Please try again.")
     except requests.exceptions.RequestException as e:
@@ -892,7 +948,7 @@ def create_spotify_playlist(user_id, name, description, access_token):
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}", "Content-Type": "application/json"}
             try:
-                r = requests.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+                r = spotify_session.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
             except requests.exceptions.Timeout:
                 raise Exception("Spotify API request timed out. Please try again.")
             except requests.exceptions.RequestException as e:
@@ -915,7 +971,7 @@ def add_tracks_to_playlist(playlist_id, track_uris, access_token):
     for i in range(0, len(track_uris), chunk_size):
         chunk = track_uris[i:i+chunk_size]
         try:
-            r = requests.post(url, headers=headers, json={"uris": chunk}, timeout=REQUEST_TIMEOUT)
+            r = spotify_session.post(url, headers=headers, json={"uris": chunk}, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout:
             raise Exception("Spotify API request timed out. Please try again.")
         except requests.exceptions.RequestException as e:
@@ -927,7 +983,7 @@ def add_tracks_to_playlist(playlist_id, track_uris, access_token):
             if new_token:
                 headers = {"Authorization": f"Bearer {new_token}", "Content-Type": "application/json"}
                 try:
-                    r = requests.post(url, headers=headers, json={"uris": chunk}, timeout=REQUEST_TIMEOUT)
+                    r = spotify_session.post(url, headers=headers, json={"uris": chunk}, timeout=REQUEST_TIMEOUT)
                 except requests.exceptions.Timeout:
                     raise Exception("Spotify API request timed out. Please try again.")
                 except requests.exceptions.RequestException as e:
@@ -943,7 +999,7 @@ def get_spotify_track(track_id, access_token):
     url = f"https://api.spotify.com/v1/tracks/{track_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
     try:
-        r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.Timeout:
         raise Exception("Spotify API request timed out. Please try again.")
     except requests.exceptions.RequestException as e:
@@ -955,7 +1011,7 @@ def get_spotify_track(track_id, access_token):
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
             try:
-                r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
             except requests.exceptions.Timeout:
                 raise Exception("Spotify API request timed out. Please try again.")
             except requests.exceptions.RequestException as e:
@@ -972,7 +1028,7 @@ def get_spotify_artist(artist_id, access_token):
     url = f"https://api.spotify.com/v1/artists/{artist_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
     try:
-        r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.Timeout:
         raise Exception("Spotify API request timed out. Please try again.")
     except requests.exceptions.RequestException as e:
@@ -984,7 +1040,7 @@ def get_spotify_artist(artist_id, access_token):
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
             try:
-                r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
             except requests.exceptions.Timeout:
                 raise Exception("Spotify API request timed out. Please try again.")
             except requests.exceptions.RequestException as e:
@@ -1012,7 +1068,7 @@ def get_tracks_batch(track_ids, access_token):
         headers = {"Authorization": f"Bearer {access_token}"}
         
         try:
-            r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout:
             raise Exception("Spotify API request timed out. Please try again.")
         except requests.exceptions.RequestException as e:
@@ -1024,7 +1080,7 @@ def get_tracks_batch(track_ids, access_token):
             if new_token:
                 headers = {"Authorization": f"Bearer {new_token}"}
                 try:
-                    r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                    r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
                 except requests.exceptions.Timeout:
                     raise Exception("Spotify API request timed out. Please try again.")
                 except requests.exceptions.RequestException as e:
@@ -1056,7 +1112,7 @@ def get_artists_batch(artist_ids, access_token):
         headers = {"Authorization": f"Bearer {access_token}"}
         
         try:
-            r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout:
             raise Exception("Spotify API request timed out. Please try again.")
         except requests.exceptions.RequestException as e:
@@ -1068,7 +1124,7 @@ def get_artists_batch(artist_ids, access_token):
             if new_token:
                 headers = {"Authorization": f"Bearer {new_token}"}
                 try:
-                    r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                    r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
                 except requests.exceptions.Timeout:
                     raise Exception("Spotify API request timed out. Please try again.")
                 except requests.exceptions.RequestException as e:
