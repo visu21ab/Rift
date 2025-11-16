@@ -17,6 +17,7 @@ import smtplib
 from email.message import EmailMessage
 
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.pool import NullPool
 from passlib.hash import bcrypt
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -27,7 +28,19 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 app.config['SESSION_TYPE'] = 'filesystem'
-database_url = os.getenv('DATABASE_URL', 'sqlite:///drift.db')
+# Prefer DATABASE_URL; otherwise, build from discrete env vars if present
+database_url = os.getenv('DATABASE_URL') or ''
+if not database_url:
+    pg_user = os.getenv('user')
+    pg_password = os.getenv('password')
+    pg_host = os.getenv('host')
+    pg_port = os.getenv('port')
+    pg_dbname = os.getenv('dbname')
+    if all([pg_user, pg_password, pg_host, pg_port, pg_dbname]):
+        # Use psycopg3 driver and enforce SSL (Supabase)
+        database_url = f"postgresql+psycopg://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_dbname}?sslmode=require"
+    else:
+        database_url = 'sqlite:///drift.db'
 
 # Convert postgresql:// URLs to use psycopg3 driver for Python 3.13 compatibility
 if database_url.startswith('postgresql://') or database_url.startswith('postgres://'):
@@ -47,14 +60,15 @@ if database_url.startswith(('postgresql+psycopg://', 'postgres://', 'postgresql:
     is_direct = 'db.supabase.co' in database_url or ':5432' in database_url
     
     if is_transaction_pooler:
-        # Transaction pooler has strict limits and doesn't support PREPARE statements
-        # Use minimal pool and configure for transaction pooler compatibility
-        pool_size = 1
-        max_overflow = 0
+        # Transaction pooler: disable client-side pooling per SQLAlchemy guidance
+        # https://docs.sqlalchemy.org/en/20/core/pooling.html#switching-pool-implementations
         connect_args = {
             'connect_timeout': 10,
-            'sslmode': 'require',
-            'prepared_statement_cache_size': 0  # Disable prepared statements for transaction pooler (psycopg3)
+            'sslmode': 'require'
+        }
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'poolclass': NullPool,
+            'connect_args': connect_args
         }
     elif is_direct:
         # Direct connection allows more connections - use larger pool for better performance
@@ -64,6 +78,14 @@ if database_url.startswith(('postgresql+psycopg://', 'postgres://', 'postgresql:
             'connect_timeout': 10,
             'sslmode': 'require'
         }
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_size': pool_size,
+            'max_overflow': max_overflow,
+            'pool_recycle': 180,  # Recycle connections after 3 minutes (faster cleanup)
+            'pool_pre_ping': True,  # Verify connections before using
+            'pool_timeout': 5,  # Wait up to 5 seconds for a connection
+            'connect_args': connect_args
+        }
     else:
         # Default for other PostgreSQL databases
         pool_size = 5
@@ -72,15 +94,14 @@ if database_url.startswith(('postgresql+psycopg://', 'postgres://', 'postgresql:
             'connect_timeout': 10,
             'sslmode': 'require'
         }
-    
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': pool_size,
-        'max_overflow': max_overflow,
-        'pool_recycle': 180,  # Recycle connections after 3 minutes (faster cleanup)
-        'pool_pre_ping': True,  # Verify connections before using
-        'pool_timeout': 5,  # Wait up to 5 seconds for a connection
-        'connect_args': connect_args
-    }
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_size': pool_size,
+            'max_overflow': max_overflow,
+            'pool_recycle': 180,  # Recycle connections after 3 minutes (faster cleanup)
+            'pool_pre_ping': True,  # Verify connections before using
+            'pool_timeout': 5,  # Wait up to 5 seconds for a connection
+            'connect_args': connect_args
+        }
 
 Session(app)
 
