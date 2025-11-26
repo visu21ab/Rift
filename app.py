@@ -719,11 +719,11 @@ def generate_playlist():
             return jsonify({'error': 'No tracks found on Spotify'}), 400
         
         # Step 3: Create playlist
-        # Use "me" instead of user_id - this is the recommended approach and avoids any issues with user_id length
+        user_id = session['spotify_user_id']
         # Get fresh token in case it was refreshed
         access_token = session.get('spotify_access_token')
         playlist_id = create_spotify_playlist(
-            "me", 
+            user_id, 
             playlist_name, 
             "AI-generated playlist",
             access_token
