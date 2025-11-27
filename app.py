@@ -1232,8 +1232,7 @@ def genre_diversity(artist_ids, access_token):
             entropy -= p * math.log(p)
     
     max_entropy = math.log(len(genre_counts)) if len(genre_counts) > 0 else 1
-    diversity_score = entropy / max_entropy if max_entropy > 0 else 0.0
-    
+    diversity_score = 1 - (entropy / max_entropy if max_entropy > 0 else 0.0)    
     return diversity_score, genre_counts
 
 
