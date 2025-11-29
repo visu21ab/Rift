@@ -236,7 +236,7 @@
     <div class="admin-wrapper">
         <header class="header">
             <div class="header-inner">
-                <div class="logo">Rift</div>
+                <a href="{{ url_for('index') }}" class="logo" style="text-decoration: none; color: inherit;">Rift</a>
                 <div class="header-actions">
                     <a href="{{ url_for('index') }}" class="btn-link">Back to app</a>
                 </div>
@@ -259,7 +259,7 @@
                         <div class="admin-input-group">
                             <label for="inviteCredits" class="admin-label">Credits</label>
                             <input type="number" id="inviteCredits" name="inviteCredits" class="admin-input" min="1" max="50" value="3" required>
-                        </div>
+                    </div>
                     </div>
                     <button type="submit" class="btn-primary" style="align-self: flex-start; width: auto;">Send Invite</button>
                     <div id="inviteMessage" class="admin-message"></div>
@@ -268,24 +268,24 @@
 
             <div class="admin-card" style="padding: 0;">
                 <div class="admin-table-wrapper">
-                    <table class="admin-table" id="usersTable">
-                        <thead>
-                            <tr>
-                                <th>Email</th>
-                                <th>Credits</th>
-                                <th>Spotify</th>
-                                <th>Usage</th>
-                                <th>Role</th>
-                                <th>Updated</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
+                <table class="admin-table" id="usersTable">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Credits</th>
+                            <th>Spotify</th>
+                            <th>Usage</th>
+                            <th>Role</th>
+                            <th>Updated</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
                                 <td colspan="7" class="empty-state" id="usersTablePlaceholder">Loading users…</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                        </tr>
+                    </tbody>
+                </table>
                 </div>
             </div>
         </main>

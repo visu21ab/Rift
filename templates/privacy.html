@@ -103,9 +103,7 @@
     <div class="privacy-wrapper">
         <header class="header">
             <div class="header-inner">
-                <div class="logo">
-                    <a href="{{ url_for('index') }}" style="text-decoration: none; color: inherit;">Rift</a>
-                </div>
+                <a href="{{ url_for('index') }}" class="logo" style="text-decoration: none; color: inherit;">Rift</a>
                 <div class="header-actions">
                     {% if user %}
                     <a href="{{ url_for('logout') }}" class="btn-link">Logout</a>
@@ -223,11 +221,11 @@
                         For questions about this privacy policy, please contact <a href="mailto:viktoria.sundelin@telia.com" style="color: var(--accent-primary); text-decoration: none;">viktoria.sundelin@telia.com</a>
                     </p>
                 </section>
-            </div>
+                </div>
 
             <div class="privacy-footer">
                 <a href="{{ url_for('index') }}" class="btn-secondary">Back to App</a>
-            </div>
+                </div>
         </main>
     </div>
 </body>

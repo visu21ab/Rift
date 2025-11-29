@@ -5,10 +5,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup event listeners after DOM is ready
     const loginBtnStep = document.getElementById('loginBtnStep');
     const logoutBtn = document.getElementById('logoutBtn');
+    const viewPlaylistsBtn = document.getElementById('viewPlaylistsBtn');
     const playlistForm = document.getElementById('playlistForm');
+    if (viewPlaylistsBtn) {
+        viewPlaylistsBtn.addEventListener('click', () => {
+            const playlistsSection = document.getElementById('myPlaylistsSection');
+            const stepMood = document.getElementById('stepMood');
+            const stepResults = document.getElementById('stepResults');
+            
+            if (playlistsSection) {
+                if (playlistsSection.style.display === 'none') {
+                    playlistsSection.style.display = 'block';
+                    if (stepMood) stepMood.style.display = 'none';
+                    if (stepResults) stepResults.style.display = 'none';
+                    fetchPlaylists();
+                } else {
+                    playlistsSection.style.display = 'none';
+                    if (stepMood) stepMood.style.display = 'block';
+                }
+            }
+        });
+    }
     
     const connectToSpotify = () => {
-        window.location.href = '/spotify/connect';
+            window.location.href = '/spotify/connect';
     };
     
     if (loginBtnStep) {
@@ -131,32 +151,82 @@ async function checkAuthStatus() {
 function updateStepVisibility(data) {
     const loginBtnStep = document.getElementById('loginBtnStep');
     
-    if (data.spotify_connected) {
-        // Hide the connect button when connected
-        if (loginBtnStep) {
-            loginBtnStep.style.display = 'none';
-        }
-    } else {
-        // Show the connect button when not connected
-        if (loginBtnStep) {
-            loginBtnStep.style.display = 'inline-flex';
+    if (loginBtnStep) {
+        if (data.spotify_connected) {
+            // Mark button as connected (different color)
+            loginBtnStep.classList.add('btn-connected');
+            loginBtnStep.textContent = 'Connected to Spotify';
+        } else {
+            // Mark button as not connected
+            loginBtnStep.classList.remove('btn-connected');
+            loginBtnStep.textContent = 'Connect Spotify';
         }
     }
 }
 
 function updateUserHeader(data) {
     const userInfo = document.getElementById('userInfo');
+    const viewPlaylistsBtn = document.getElementById('viewPlaylistsBtn');
     const topBannerIdentity = document.getElementById('topBannerIdentity');
     const topBannerCredits = document.getElementById('topBannerCredits');
 
     // Update header buttons
     if (userInfo) userInfo.style.display = 'flex';
+    if (viewPlaylistsBtn && data.authenticated) {
+        viewPlaylistsBtn.style.display = 'inline-block';
+    }
     
     const displayName = data.spotify_display_name || data.email || 'User';
     if (topBannerIdentity) topBannerIdentity.textContent = displayName;
     if (typeof data.credits_remaining === 'number') {
         if (topBannerCredits) topBannerCredits.textContent = `${data.credits_remaining} credits`;
     }
+}
+
+async function fetchPlaylists() {
+    try {
+        const response = await fetch('/api/my-playlists');
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to fetch playlists');
+        }
+        
+        displayPlaylists(data.playlists || []);
+    } catch (error) {
+        console.error('Error fetching playlists:', error);
+        const playlistsList = document.getElementById('playlistsList');
+        if (playlistsList) {
+            playlistsList.innerHTML = `<p style="text-align: center; color: var(--text-muted);">Failed to load playlists. Please try again.</p>`;
+        }
+    }
+}
+
+function displayPlaylists(playlists) {
+    const playlistsList = document.getElementById('playlistsList');
+    if (!playlistsList) return;
+    
+    if (playlists.length === 0) {
+        playlistsList.innerHTML = `<p style="text-align: center; color: var(--text-muted);">No playlists yet. Create your first playlist above!</p>`;
+        return;
+    }
+    
+    playlistsList.innerHTML = '';
+    
+    playlists.forEach(playlist => {
+        const playlistItem = document.createElement('div');
+        playlistItem.className = 'playlist-item';
+        playlistItem.innerHTML = `
+            <div class="playlist-info">
+                <div class="playlist-name">${escapeHtml(playlist.name || 'Untitled Playlist')}</div>
+                <div class="playlist-date">${new Date(playlist.created_at).toLocaleDateString()}</div>
+            </div>
+            <a href="${playlist.spotify_url}" target="_blank" class="btn-secondary" style="text-decoration: none;">
+                Open in Spotify
+            </a>
+        `;
+        playlistsList.appendChild(playlistItem);
+    });
 }
 
 // Display results
@@ -193,9 +263,15 @@ function displayResults(data) {
         if (userCredits) userCredits.textContent = `${data.credits_remaining} credits`;
     }
     
-    // Update Spotify link
+    // Update Spotify link and store playlist ID
     const spotifyLink = document.getElementById('spotifyLink');
-    if (spotifyLink) spotifyLink.href = data.spotify_url;
+    if (spotifyLink) {
+        spotifyLink.href = data.spotify_url;
+        // Store playlist ID in data attribute for image upload
+        if (data.playlist_id) {
+            spotifyLink.setAttribute('data-playlist-id', data.playlist_id);
+        }
+    }
     
     // Display tracks
     const tracksList = document.getElementById('tracksList');

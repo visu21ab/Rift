@@ -1524,6 +1524,56 @@ def get_spotify_recommendations(seed_tracks, access_token, limit=20, min_danceab
     return recommendations
 
 
+@app.route('/api/my-playlists', methods=['GET'])
+@login_required
+def get_my_playlists():
+    """Get all playlists created by the current user"""
+    try:
+        playlists = PlaylistUsage.query.filter_by(user_id=g.user.id).order_by(PlaylistUsage.created_at.desc()).all()
+        
+        playlist_data = []
+        access_token = get_valid_access_token()
+        
+        for usage in playlists:
+            if usage.spotify_playlist_id and access_token:
+                try:
+                    # Get playlist details from Spotify
+                    url = f"https://api.spotify.com/v1/playlists/{usage.spotify_playlist_id}"
+                    headers = {"Authorization": f"Bearer {access_token}"}
+                    r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                    
+                    if r.status_code == 401:
+                        new_token = refresh_spotify_token()
+                        if new_token:
+                            headers = {"Authorization": f"Bearer {new_token}"}
+                            r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                    
+                    if r.status_code == 200:
+                        playlist_info = r.json()
+                        playlist_data.append({
+                            'id': usage.id,
+                            'spotify_playlist_id': usage.spotify_playlist_id,
+                            'name': playlist_info.get('name', 'Untitled Playlist'),
+                            'created_at': usage.created_at.isoformat(),
+                            'spotify_url': f"https://open.spotify.com/playlist/{usage.spotify_playlist_id}"
+                        })
+                except Exception as e:
+                    # If we can't fetch from Spotify, still include basic info
+                    app.logger.warning(f"Error fetching playlist {usage.spotify_playlist_id}: {str(e)}")
+                    playlist_data.append({
+                        'id': usage.id,
+                        'spotify_playlist_id': usage.spotify_playlist_id,
+                        'name': 'Untitled Playlist',
+                        'created_at': usage.created_at.isoformat(),
+                        'spotify_url': f"https://open.spotify.com/playlist/{usage.spotify_playlist_id}"
+                    })
+        
+        return jsonify({'playlists': playlist_data})
+    except Exception as e:
+        app.logger.error(f"Error fetching playlists: {str(e)}")
+        return jsonify({'error': 'Failed to fetch playlists'}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
 

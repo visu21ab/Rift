@@ -208,7 +208,7 @@
                 <div class="login-input-group">
                     <label for="password" class="login-label">Password</label>
                     <input type="password" id="password" name="password" class="login-input" required minlength="8" placeholder="Your password">
-                </div>
+            </div>
                 
                 <input type="hidden" name="next" value="{{ next }}">
                 
@@ -216,12 +216,12 @@
                 
                 <div class="login-links">
                     <a href="{{ url_for('forgot_password') }}" class="login-link">Forgot password?</a>
-                </div>
-            </form>
+                    </div>
+                </form>
             
             <p class="login-hint">Invited users: check your email for a signup link.</p>
-        </div>
-        
+            </div>
+            
         <div class="login-footer">
             <a href="{{ url_for('privacy') }}" class="login-footer-link">Privacy Policy</a>
         </div>
