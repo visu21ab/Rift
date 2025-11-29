@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Setup premium filter controls
+    setupPremiumFilters();
+    
     if (playlistForm) {
         playlistForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -49,6 +52,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
+            // Collect premium filter parameters
+            const premiumFiltersSection = document.getElementById('premiumFiltersSection');
+            const requestBody = {
+                mood: mood,
+                playlist_name: playlistName,
+                track_count: trackCount
+            };
+            
+            // Add premium filters if section is visible (user is premium)
+            if (premiumFiltersSection && premiumFiltersSection.style.display !== 'none') {
+                const danceabilityRange = document.getElementById('danceabilityRange');
+                const minBpmInput = document.getElementById('minBpm');
+                const maxBpmInput = document.getElementById('maxBpm');
+                
+                // Danceability: convert from 0-100 scale to 0-1 scale with a range
+                if (danceabilityRange) {
+                    const danceabilityValue = parseInt(danceabilityRange.value, 10);
+                    // Create a range around the selected value (±10 points)
+                    const range = 10;
+                    const minDanceability = Math.max(0, (danceabilityValue - range) / 100);
+                    const maxDanceability = Math.min(1, (danceabilityValue + range) / 100);
+                    
+                    requestBody.min_danceability = minDanceability.toFixed(2);
+                    requestBody.max_danceability = maxDanceability.toFixed(2);
+                }
+                
+                // BPM range
+                if (minBpmInput && minBpmInput.value.trim()) {
+                    const minBpm = parseFloat(minBpmInput.value);
+                    if (!isNaN(minBpm) && minBpm >= 0) {
+                        requestBody.min_bpm = minBpm;
+                    }
+                }
+                
+                if (maxBpmInput && maxBpmInput.value.trim()) {
+                    const maxBpm = parseFloat(maxBpmInput.value);
+                    if (!isNaN(maxBpm) && maxBpm >= 0) {
+                        requestBody.max_bpm = maxBpm;
+                    }
+                }
+            }
+            
             // Hide previous results and errors
             document.getElementById('resultsSection').style.display = 'none';
             document.getElementById('errorMessage').style.display = 'none';
@@ -69,11 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        mood: mood,
-                        playlist_name: playlistName,
-                        track_count: trackCount
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const data = await response.json();
@@ -130,6 +171,13 @@ function updateUserHeader(data) {
     if (typeof data.credits_remaining === 'number') {
         if (topBannerCredits) topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
         if (userCredits) userCredits.textContent = `Credits: ${data.credits_remaining}`;
+    }
+    
+    // Show/hide premium filters based on subscription
+    const premiumFiltersSection = document.getElementById('premiumFiltersSection');
+    if (premiumFiltersSection) {
+        const isPremium = data.subscription_plan === 'premium';
+        premiumFiltersSection.style.display = isPremium ? 'block' : 'none';
     }
 }
 
@@ -232,5 +280,21 @@ function countSentences(text) {
     // Split by sentence-ending punctuation followed by whitespace or end of string
     const sentences = text.trim().split(/[.!?]+(?:\s+|$)/).filter(s => s.trim());
     return sentences.length > 0 ? sentences.length : 1; // At least 1 if there's any text
+}
+
+// Setup premium filter controls
+function setupPremiumFilters() {
+    const danceabilityRange = document.getElementById('danceabilityRange');
+    const danceabilityValue = document.getElementById('danceabilityValue');
+    
+    if (danceabilityRange && danceabilityValue) {
+        // Update value display when slider changes
+        danceabilityRange.addEventListener('input', (e) => {
+            danceabilityValue.textContent = e.target.value;
+        });
+        
+        // Initialize display
+        danceabilityValue.textContent = danceabilityRange.value;
+    }
 }
 

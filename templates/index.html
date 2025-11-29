@@ -94,6 +94,65 @@
                         <p class="form-hint">Pick between 1 and 50 tracks for your playlist.</p>
                     </div>
 
+                    <!-- Premium Filters Section -->
+                    <div id="premiumFiltersSection" class="premium-filters-section" style="display: none;">
+                        <div class="premium-badge">
+                            <span>✨ Premium Feature</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="danceabilityRange" class="form-label">Danceability</label>
+                            <div class="range-input-container">
+                                <input
+                                    type="range"
+                                    id="danceabilityRange"
+                                    name="danceabilityRange"
+                                    class="form-range"
+                                    min="0"
+                                    max="100"
+                                    value="50"
+                                >
+                                <div class="range-labels">
+                                    <span>Low (0)</span>
+                                    <span id="danceabilityValue">50</span>
+                                    <span>High (100)</span>
+                                </div>
+                            </div>
+                            <p class="form-hint">Adjust the danceability level. Higher values mean more danceable tracks.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">BPM Range (Tempo)</label>
+                            <div class="bpm-inputs">
+                                <div class="bpm-input-group">
+                                    <label for="minBpm" class="bpm-label">Min BPM</label>
+                                    <input
+                                        type="number"
+                                        id="minBpm"
+                                        name="minBpm"
+                                        class="form-input"
+                                        min="0"
+                                        max="200"
+                                        placeholder="e.g. 80"
+                                    >
+                                </div>
+                                <div class="bpm-input-group">
+                                    <label for="maxBpm" class="bpm-label">Max BPM</label>
+                                    <input
+                                        type="number"
+                                        id="maxBpm"
+                                        name="maxBpm"
+                                        class="form-input"
+                                        min="0"
+                                        max="200"
+                                        placeholder="e.g. 120"
+                                    >
+                                </div>
+                            </div>
+                            <p class="form-hint">Set the tempo range in beats per minute. Leave empty for no limit.</p>
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary btn-large" id="generateBtn">
                         <span class="btn-text">Generate Playlist</span>
                         <span class="btn-loader" style="display: none;">
