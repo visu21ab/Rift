@@ -8,169 +8,228 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
-    <script>
-        // Initialize theme immediately to prevent FOUC
-        (function() {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
-        })();
-    </script>
+    <style>
+        .privacy-wrapper {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        
+        .privacy-header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+        
+        .privacy-title {
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #000000;
+            margin-bottom: 12px;
+        }
+        
+        .privacy-date {
+            font-size: 14px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        
+        .privacy-content {
+            line-height: 1.8;
+            color: var(--text-primary);
+        }
+        
+        .privacy-section {
+            margin-bottom: 40px;
+        }
+        
+        .privacy-section-title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            color: #000000;
+            margin-bottom: 16px;
+            margin-top: 32px;
+        }
+        
+        .privacy-section-title:first-child {
+            margin-top: 0;
+        }
+        
+        .privacy-text {
+            font-size: 15px;
+            line-height: 1.8;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        
+        .privacy-list {
+            margin: 16px 0;
+            padding-left: 0;
+            list-style: none;
+        }
+        
+        .privacy-list li {
+            font-size: 15px;
+            line-height: 1.8;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            padding-left: 24px;
+            position: relative;
+        }
+        
+        .privacy-list li::before {
+            content: '•';
+            position: absolute;
+            left: 8px;
+            color: var(--accent-primary);
+            font-weight: 700;
+        }
+        
+        .privacy-list li strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        
+        .privacy-footer {
+            margin-top: 64px;
+            padding-top: 32px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-    <!-- Dark Mode Toggle -->
-    <button class="dark-mode-toggle" id="darkModeToggle" aria-label="Toggle dark mode">
-        <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-        </svg>
-        <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-        </svg>
-    </button>
-    <div class="container">
+    <div class="privacy-wrapper">
         <header class="header">
-            <div class="header-content">
+            <div class="header-inner">
                 <div class="logo">
-                    <a href="{{ url_for('index') }}" style="text-decoration: none; color: inherit;">
-                        <span class="logo-text">Rift.</span>
-                    </a>
+                    <a href="{{ url_for('index') }}" style="text-decoration: none; color: inherit;">Rift</a>
                 </div>
-                <div class="auth-section">
+                <div class="header-actions">
                     {% if user %}
-                    <a href="{{ url_for('logout') }}" class="btn btn-secondary">Sign Out</a>
+                    <a href="{{ url_for('logout') }}" class="btn-link">Logout</a>
                     {% else %}
-                    <a href="{{ url_for('auth_login') }}" class="btn btn-secondary">Sign In</a>
+                    <a href="{{ url_for('auth_login') }}" class="btn-link">Sign In</a>
                     {% endif %}
                 </div>
             </div>
         </header>
 
         <main class="main-content">
-            <section class="info-section" style="margin-top: 40px; max-width: 800px; margin-left: auto; margin-right: auto;">
-                <h1 class="hero-title" style="font-size: 48px; margin-bottom: 24px;">Privacy Policy</h1>
-                <p class="section-copy" style="color: var(--text-muted); margin-bottom: 40px;">
-                    <em>Last updated: {{ current_date }}</em>
-                </p>
+            <div class="privacy-header">
+                <h1 class="privacy-title">Privacy Policy</h1>
+                <p class="privacy-date">Last updated: {{ current_date }}</p>
+            </div>
 
-                <div style="line-height: 1.8; color: var(--text-primary);">
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">1. Who We Are</h2>
-                    <p class="section-copy">
+            <div class="privacy-content">
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">1. Who We Are</h2>
+                    <p class="privacy-text">
                         Rift is a beta service operated by Viktoria Sundelin. This privacy policy explains how we collect, use, and protect your personal information when you use our playlist generation service.
                     </p>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">2. Information We Collect</h2>
-                    <p class="section-copy">
-                        We collect the following information:
-                    </p>
-                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
-                        <li style="margin-bottom: 8px;"><strong>Account Information:</strong> Email address, encrypted password, and account creation/update timestamps.</li>
-                        <li style="margin-bottom: 8px;"><strong>Spotify Integration:</strong> Spotify user ID and display name (when you connect your Spotify account).</li>
-                        <li style="margin-bottom: 8px;"><strong>Usage Data:</strong> Spotify playlist IDs for playlists you create through our service, associated with your account ID and timestamps.</li>
-                        <li style="margin-bottom: 8px;"><strong>Playlist Prompts:</strong> The mood descriptions and prompts you enter when generating playlists. These are stored anonymously (without your user ID) for service improvement purposes.</li>
-                        <li style="margin-bottom: 8px;"><strong>Service Data:</strong> Credits remaining, admin status, and invitation tokens (for beta access management).</li>
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">2. Information We Collect</h2>
+                    <p class="privacy-text">We collect the following information:</p>
+                    <ul class="privacy-list">
+                        <li><strong>Account Information:</strong> Email address, encrypted password, and account creation/update timestamps.</li>
+                        <li><strong>Spotify Integration:</strong> Spotify user ID and display name (when you connect your Spotify account).</li>
+                        <li><strong>Usage Data:</strong> Spotify playlist IDs for playlists you create through our service, associated with your account ID and timestamps.</li>
+                        <li><strong>Playlist Prompts:</strong> The mood descriptions and prompts you enter when generating playlists. These are stored anonymously (without your user ID) for service improvement purposes.</li>
+                        <li><strong>Service Data:</strong> Credits remaining, admin status, and invitation tokens (for beta access management).</li>
                     </ul>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">3. How We Use Your Information</h2>
-                    <p class="section-copy">
-                        We use the information we collect to:
-                    </p>
-                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
-                        <li style="margin-bottom: 8px;">Provide and maintain our playlist generation service</li>
-                        <li style="margin-bottom: 8px;">Authenticate your account and manage your access</li>
-                        <li style="margin-bottom: 8px;">Track your playlist credits and usage</li>
-                        <li style="margin-bottom: 8px;">Connect to your Spotify account to create playlists</li>
-                        <li style="margin-bottom: 8px;">Improve our service by analyzing anonymous playlist prompts</li>
-                        <li style="margin-bottom: 8px;">Send invitation emails for beta access (if email is enabled)</li>
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">3. How We Use Your Information</h2>
+                    <p class="privacy-text">We use the information we collect to:</p>
+                    <ul class="privacy-list">
+                        <li>Provide and maintain our playlist generation service</li>
+                        <li>Authenticate your account and manage your access</li>
+                        <li>Track your playlist credits and usage</li>
+                        <li>Connect to your Spotify account to create playlists</li>
+                        <li>Improve our service by analyzing anonymous playlist prompts</li>
+                        <li>Send invitation emails for beta access (if email is enabled)</li>
                     </ul>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">4. Data Storage and Security</h2>
-                    <p class="section-copy">
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">4. Data Storage and Security</h2>
+                    <p class="privacy-text">
                         Your data is stored on secure servers hosted by Render (USA/EU) and Supabase (PostgreSQL database). We use industry-standard security measures including:
                     </p>
-                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
-                        <li style="margin-bottom: 8px;">Encrypted password storage (bcrypt hashing)</li>
-                        <li style="margin-bottom: 8px;">Secure database connections (SSL/TLS)</li>
-                        <li style="margin-bottom: 8px;">Restricted access to personal data</li>
+                    <ul class="privacy-list">
+                        <li>Encrypted password storage (bcrypt hashing)</li>
+                        <li>Secure database connections (SSL/TLS)</li>
+                        <li>Restricted access to personal data</li>
                     </ul>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">5. Data Sharing</h2>
-                    <p class="section-copy">
-                        We do not sell, rent, or share your personal information with third parties except:
-                    </p>
-                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
-                        <li style="margin-bottom: 8px;"><strong>Spotify:</strong> We use Spotify's API to create playlists in your account. This requires sharing your Spotify user ID and playlist creation requests with Spotify.</li>
-                        <li style="margin-bottom: 8px;"><strong>Service Providers:</strong> We use Render for hosting and Supabase for database services. These providers process data under strict confidentiality agreements.</li>
-                        <li style="margin-bottom: 8px;"><strong>Legal Requirements:</strong> We may disclose information if required by law or to protect our rights.</li>
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">5. Data Sharing</h2>
+                    <p class="privacy-text">We do not sell, rent, or share your personal information with third parties except:</p>
+                    <ul class="privacy-list">
+                        <li><strong>Spotify:</strong> We use Spotify's API to create playlists in your account. This requires sharing your Spotify user ID and playlist creation requests with Spotify.</li>
+                        <li><strong>Service Providers:</strong> We use Render for hosting and Supabase for database services. These providers process data under strict confidentiality agreements.</li>
+                        <li><strong>Legal Requirements:</strong> We may disclose information if required by law or to protect our rights.</li>
                     </ul>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">6. Data Retention</h2>
-                    <p class="section-copy">
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">6. Data Retention</h2>
+                    <p class="privacy-text">
                         We retain your data for as long as your account is active. You can request deletion of your account and associated data at any time by contacting us. Anonymous playlist prompts may be retained longer for service improvement purposes.
                     </p>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">7. Your Rights</h2>
-                    <p class="section-copy">
-                        Depending on your location, you have the right to:
-                    </p>
-                    <ul style="margin-left: 24px; margin-top: 12px; margin-bottom: 24px;">
-                        <li style="margin-bottom: 8px;">Access the personal data we hold about you</li>
-                        <li style="margin-bottom: 8px;">Request correction of inaccurate data</li>
-                        <li style="margin-bottom: 8px;">Request deletion of your account and data</li>
-                        <li style="margin-bottom: 8px;">Withdraw consent for data processing</li>
-                        <li style="margin-bottom: 8px;">Export your data in a portable format</li>
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">7. Your Rights</h2>
+                    <p class="privacy-text">Depending on your location, you have the right to:</p>
+                    <ul class="privacy-list">
+                        <li>Access the personal data we hold about you</li>
+                        <li>Request correction of inaccurate data</li>
+                        <li>Request deletion of your account and data</li>
+                        <li>Withdraw consent for data processing</li>
+                        <li>Export your data in a portable format</li>
                     </ul>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">8. Cookies and Session Data</h2>
-                    <p class="section-copy">
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">8. Cookies and Session Data</h2>
+                    <p class="privacy-text">
                         We use server-side sessions to maintain your login state. These sessions are stored securely and expire when you sign out or after a period of inactivity.
                     </p>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">9. Children's Privacy</h2>
-                    <p class="section-copy">
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">9. Children's Privacy</h2>
+                    <p class="privacy-text">
                         Our service is not intended for users under the age of 16. We do not knowingly collect personal information from children under 16.
                     </p>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">10. Changes to This Policy</h2>
-                    <p class="section-copy">
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">10. Changes to This Policy</h2>
+                    <p class="privacy-text">
                         We may update this privacy policy from time to time. We will notify you of any material changes by updating the "Last updated" date at the top of this page.
                     </p>
+                </section>
 
-                    <h2 class="section-heading" style="margin-top: 32px; margin-bottom: 16px;">11. Contact Us</h2>
-                    <p class="section-copy">
-                        For questions about this privacy policy, please contact viktoria.sundelin@telia.com
+                <section class="privacy-section">
+                    <h2 class="privacy-section-title">11. Contact Us</h2>
+                    <p class="privacy-text">
+                        For questions about this privacy policy, please contact <a href="mailto:viktoria.sundelin@telia.com" style="color: var(--accent-primary); text-decoration: none;">viktoria.sundelin@telia.com</a>
                     </p>
-                </div>
+                </section>
+            </div>
 
-                <div style="margin-top: 48px; padding-top: 32px; border-top: 1px solid rgba(0,0,0,0.1);">
-                    <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to App</a>
-                </div>
-            </section>
+            <div class="privacy-footer">
+                <a href="{{ url_for('index') }}" class="btn-secondary">Back to App</a>
+            </div>
         </main>
     </div>
-    <script>
-        // Dark Mode Toggle Functionality
-        (function() {
-            const darkModeToggle = document.getElementById('darkModeToggle');
-            if (!darkModeToggle) return;
-            
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
-            
-            darkModeToggle.addEventListener('click', () => {
-                const currentTheme = document.documentElement.getAttribute('data-theme');
-                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-                document.documentElement.setAttribute('data-theme', newTheme);
-                localStorage.setItem('theme', newTheme);
-            });
-        })();
-    </script>
 </body>
 </html>
 
