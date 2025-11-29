@@ -8,6 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+    <script>
+        // Initialize theme immediately to prevent FOUC
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
 </head>
 <body>
     <div class="top-banner">
@@ -25,6 +32,24 @@
         <a href="#aboutSection" class="top-banner-link">Learn more about Rift</a>
         {% endif %}
     </div>
+    <!-- Dark Mode Toggle -->
+    <button class="dark-mode-toggle" id="darkModeToggle" aria-label="Toggle dark mode">
+        <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+    </button>
+
     <div class="container">
         <!-- Header -->
         <header class="header">
@@ -94,93 +119,6 @@
                         <p class="form-hint">Pick between 1 and 50 tracks for your playlist.</p>
                     </div>
 
-                    <!-- Premium Filters Section -->
-                    <div id="premiumFiltersSection" class="premium-filters-section" style="display: none;">
-                        <div class="premium-badge">
-                            <span>✨ Premium Feature</span>
-                        </div>
-                        
-                        <div class="form-group">
-                            <div class="filter-toggle-container">
-                                <label for="danceabilityToggle" class="form-label">Danceability</label>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="danceabilityToggle" class="toggle-input">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                            <div class="range-input-container" id="danceabilityContainer" style="display: none;">
-                                <input
-                                    type="range"
-                                    id="danceabilityRange"
-                                    name="danceabilityRange"
-                                    class="form-range"
-                                    min="0"
-                                    max="100"
-                                    value="50"
-                                    disabled
-                                >
-                                <div class="range-labels">
-                                    <span>Low (0)</span>
-                                    <span id="danceabilityValue">50</span>
-                                    <span>High (100)</span>
-                                </div>
-                            </div>
-                            <p class="form-hint">Adjust the danceability level. Higher values mean more danceable tracks.</p>
-                        </div>
-
-                        <div class="form-group">
-                            <div class="filter-toggle-container">
-                                <label class="form-label">BPM Range (Tempo)</label>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="bpmToggle" class="toggle-input">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                            <div class="bpm-sliders-container" id="bpmContainer" style="display: none;">
-                                <div class="bpm-slider-group">
-                                    <label for="minBpmRange" class="bpm-label">Min BPM</label>
-                                    <div class="range-input-container">
-                                        <input
-                                            type="range"
-                                            id="minBpmRange"
-                                            name="minBpmRange"
-                                            class="form-range"
-                                            min="0"
-                                            max="200"
-                                            value="60"
-                                            disabled
-                                        >
-                                        <div class="range-labels">
-                                            <span>0</span>
-                                            <span id="minBpmValue">60</span>
-                                            <span>200</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="bpm-slider-group">
-                                    <label for="maxBpmRange" class="bpm-label">Max BPM</label>
-                                    <div class="range-input-container">
-                                        <input
-                                            type="range"
-                                            id="maxBpmRange"
-                                            name="maxBpmRange"
-                                            class="form-range"
-                                            min="0"
-                                            max="200"
-                                            value="140"
-                                            disabled
-                                        >
-                                        <div class="range-labels">
-                                            <span>0</span>
-                                            <span id="maxBpmValue">140</span>
-                                            <span>200</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <p class="form-hint">Set the tempo range in beats per minute.</p>
-                        </div>
-                    </div>
 
                     <button type="submit" class="btn btn-primary btn-large" id="generateBtn">
                         <span class="btn-text">Generate Playlist</span>

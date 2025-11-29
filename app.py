@@ -249,8 +249,8 @@ with app.app_context():
     
     if DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD:
         try:
-            existing_admin = User.query.filter_by(email=DEFAULT_ADMIN_EMAIL).first()
-            if not existing_admin:
+            existing_user = User.query.filter_by(email=DEFAULT_ADMIN_EMAIL).first()
+            if not existing_user:
                 admin_user = User(
                     email=DEFAULT_ADMIN_EMAIL,
                     is_admin=True,
@@ -261,12 +261,22 @@ with app.app_context():
                 db.session.add(admin_user)
                 db.session.commit()
             else:
-                # Ensure existing admin is set to premium
-                if existing_admin.is_admin and existing_admin.subscription_plan != 'premium':
-                    existing_admin.subscription_plan = 'premium'
+                # Ensure user with admin email is set as admin and premium
+                needs_update = False
+                if not existing_user.is_admin:
+                    existing_user.is_admin = True
+                    needs_update = True
+                if existing_user.subscription_plan != 'premium':
+                    existing_user.subscription_plan = 'premium'
+                    needs_update = True
+                # Update password if it's the default admin (in case password changed in env)
+                if needs_update or not existing_user.check_password(DEFAULT_ADMIN_PASSWORD):
+                    existing_user.set_password(DEFAULT_ADMIN_PASSWORD)
+                    needs_update = True
+                if needs_update:
                     db.session.commit()
         except Exception as e:
-            app.logger.error(f"Failed to create admin user: {str(e)}")
+            app.logger.error(f"Failed to create/update admin user: {str(e)}")
             # Don't fail startup if admin creation fails
 
 
@@ -829,12 +839,6 @@ def generate_playlist():
     playlist_name = data.get('playlist_name', 'AI Generated Playlist').strip()
     track_count = data.get('track_count', 25)
     
-    # Premium filter parameters
-    min_danceability = data.get('min_danceability')
-    max_danceability = data.get('max_danceability')
-    min_bpm = data.get('min_bpm')
-    max_bpm = data.get('max_bpm')
-    
     try:
         track_count = int(track_count)
     except (ValueError, TypeError):
@@ -855,36 +859,6 @@ def generate_playlist():
     if playlist_name_sentences > 5:
         return jsonify({'error': 'Playlist name must be 5 sentences or less. Please shorten your playlist name.'}), 400
 
-    # Check if premium features are requested
-    has_filters = any([min_danceability is not None, max_danceability is not None, min_bpm is not None, max_bpm is not None])
-    if has_filters:
-        # Validate subscription (admins are always premium)
-        if not g.user.has_premium_access():
-            return jsonify({'error': 'Danceability and BPM filters are only available for premium subscribers. Please upgrade your subscription to use these features.'}), 403
-        
-        # Validate and convert filter parameters
-        try:
-            if min_danceability is not None:
-                min_danceability = float(min_danceability)
-                min_danceability = max(0.0, min(1.0, min_danceability))
-            if max_danceability is not None:
-                max_danceability = float(max_danceability)
-                max_danceability = max(0.0, min(1.0, max_danceability))
-            if min_bpm is not None:
-                min_bpm = float(min_bpm)
-                min_bpm = max(0.0, min_bpm)
-            if max_bpm is not None:
-                max_bpm = float(max_bpm)
-                max_bpm = max(0.0, max_bpm)
-            
-            # Validate ranges make sense
-            if min_danceability is not None and max_danceability is not None and min_danceability > max_danceability:
-                return jsonify({'error': 'Minimum danceability must be less than or equal to maximum danceability.'}), 400
-            if min_bpm is not None and max_bpm is not None and min_bpm > max_bpm:
-                return jsonify({'error': 'Minimum BPM must be less than or equal to maximum BPM.'}), 400
-        except (ValueError, TypeError):
-            return jsonify({'error': 'Invalid filter parameter format. Danceability must be 0-1, BPM must be a positive number.'}), 400
-
     if g.user.credits_remaining <= 0:
         return jsonify({'error': 'You have no playlist credits remaining.'}), 403
     
@@ -894,8 +868,7 @@ def generate_playlist():
             return jsonify({'error': 'Not authenticated with Spotify'}), 401
         
         # Determine how many tracks to request from GPT
-        # If filters are active, request more to account for filtering (3x to ensure we get enough)
-        gpt_track_request = track_count * 3 if has_filters else track_count
+        gpt_track_request = track_count
         gpt_track_request = min(gpt_track_request, 100)  # GPT can handle up to 100
         
         # Step 1: Get initial tracks from GPT
@@ -955,172 +928,6 @@ def generate_playlist():
         
         if not track_uris:
             return jsonify({'error': 'No tracks found on Spotify'}), 400
-        
-        # Step 2.5: Filter by audio features and iteratively fetch more tracks from GPT until we have enough
-        if has_filters:
-            try:
-                # Get fresh token
-                access_token = session.get('spotify_access_token')
-                if not access_token:
-                    raise Exception("Spotify authentication lost. Please reconnect your account.")
-                
-                # Iteratively filter and fetch more tracks from GPT until we have enough
-                filtered_found_tracks = []
-                filtered_track_uris = []
-                filtered_artist_ids = []
-                max_iterations = 10  # Limit iterations to prevent infinite loops
-                iteration = 0
-                processed_track_names = set()  # Track (artist, track) tuples we've already processed
-                
-                # Add already searched tracks to processed set
-                for track_info in found_tracks:
-                    key = (track_info.get("artist", "").lower(), track_info.get("track", "").lower())
-                    processed_track_names.add(key)
-                
-                while len(filtered_track_uris) < track_count and iteration < max_iterations:
-                    iteration += 1
-                    
-                    # Get tracks to filter (either initial batch or new GPT suggestions)
-                    if iteration == 1:
-                        # First iteration: filter the tracks we already have
-                        tracks_to_filter = list(zip(track_uris, found_tracks, artist_ids))
-                    else:
-                        # Subsequent iterations: request more tracks from GPT
-                        needed = track_count - len(filtered_track_uris)
-                        if needed <= 0:
-                            break
-                        
-                        # Request 3x the needed amount to account for filtering
-                        additional_request = min(needed * 3, 100)
-                        
-                        # Get more tracks from GPT
-                        additional_results = get_tracks_from_gpt(mood, additional_request)
-                        additional_gpt_tracks = additional_results.get("tracks", [])
-                        
-                        if not additional_gpt_tracks or not isinstance(additional_gpt_tracks, list):
-                            # Can't get more tracks from GPT, break
-                            break
-                        
-                        # Search Spotify for new tracks
-                        new_track_uris = []
-                        new_found_tracks = []
-                        new_artist_ids = []
-                        
-                        for t in additional_gpt_tracks:
-                            track_name = t.get("track", "")
-                            artist_name = t.get("artist", "")
-                            if not track_name or not artist_name:
-                                continue
-                            
-                            # Skip if we've already processed this track
-                            key = (artist_name.lower(), track_name.lower())
-                            if key in processed_track_names:
-                                continue
-                            
-                            processed_track_names.add(key)
-                            
-                            try:
-                                # Get fresh token
-                                access_token = session.get('spotify_access_token')
-                                if not access_token:
-                                    raise Exception("Spotify authentication lost. Please reconnect your account.")
-                                
-                                matches = search_spotify_track(track_name, artist_name, access_token)
-                                
-                                if matches and matches[0]["uri"] not in all_searched_tracks:
-                                    track_uri = matches[0]["uri"]
-                                    all_searched_tracks.add(track_uri)
-                                    new_track_uris.append(track_uri)
-                                    new_found_tracks.append({
-                                        "artist": matches[0]["artist"],
-                                        "track": matches[0]["name"],
-                                        "uri": track_uri
-                                    })
-                                    if "artist_id" in matches[0]:
-                                        new_artist_ids.append(matches[0]["artist_id"])
-                            except Exception as e:
-                                app.logger.warning(f"Error searching for additional track {track_name} by {artist_name}: {str(e)}")
-                                continue
-                        
-                        if not new_track_uris:
-                            # No new tracks found, break
-                            break
-                        
-                        tracks_to_filter = list(zip(new_track_uris, new_found_tracks, new_artist_ids))
-                    
-                    # Fetch audio features for tracks to filter
-                    track_ids_to_check = [uri.split(":")[-1] for uri, _, _ in tracks_to_filter]
-                    if not track_ids_to_check:
-                        break
-                    
-                    audio_features_list = get_audio_features_batch(track_ids_to_check, access_token)
-                    
-                    # Create mapping of track_id -> audio features
-                    features_map = {}
-                    for features in audio_features_list:
-                        track_id = features.get('id')
-                        if track_id:
-                            features_map[track_id] = features
-                    
-                    # Build tracks_with_features and filter
-                    tracks_with_features = []
-                    for track_uri, track_info, artist_id in tracks_to_filter:
-                        track_id = track_uri.split(":")[-1]
-                        features = features_map.get(track_id)
-                        
-                        if features:
-                            tracks_with_features.append({
-                                'track_info': track_info,
-                                'features': features,
-                                'uri': track_uri,
-                                'artist_id': artist_id
-                            })
-                    
-                    # Filter tracks by audio features
-                    filtered_items = filter_tracks_by_audio_features(
-                        tracks_with_features,
-                        min_danceability=min_danceability,
-                        max_danceability=max_danceability,
-                        min_bpm=min_bpm,
-                        max_bpm=max_bpm
-                    )
-                    
-                    # Add filtered tracks to our collection (avoid duplicates)
-                    existing_uris = set(filtered_track_uris)
-                    for item in filtered_items:
-                        uri = item.get('uri')
-                        if uri and uri not in existing_uris:
-                            existing_uris.add(uri)
-                            filtered_found_tracks.append(item.get('track_info'))
-                            filtered_track_uris.append(uri)
-                            artist_id = item.get('artist_id')
-                            if artist_id:
-                                filtered_artist_ids.append(artist_id)
-                    
-                    # If we've reached the target, break
-                    if len(filtered_track_uris) >= track_count:
-                        break
-                
-                if not filtered_track_uris:
-                    return jsonify({
-                        'error': 'No tracks match the specified danceability and BPM criteria. Please try adjusting your filters.'
-                    }), 400
-                
-                # Limit to requested track count
-                filtered_found_tracks = filtered_found_tracks[:track_count]
-                filtered_track_uris = filtered_track_uris[:track_count]
-                filtered_artist_ids = filtered_artist_ids[:track_count]
-                
-                # Update the lists to use filtered tracks
-                found_tracks = filtered_found_tracks
-                track_uris = filtered_track_uris
-                artist_ids = filtered_artist_ids
-                
-            except Exception as filter_error:
-                app.logger.error(f"Error applying audio feature filters: {str(filter_error)}")
-                return jsonify({
-                    'error': f'Error applying filters: {str(filter_error)}'
-                }), 500
         
         # Step 3: Create playlist
         user_id = session['spotify_user_id']
@@ -1638,98 +1445,6 @@ def genre_diversity(artist_ids, access_token):
     max_entropy = math.log(len(genre_counts)) if len(genre_counts) > 0 else 1
     diversity_score = 1 - (entropy / max_entropy if max_entropy > 0 else 0.0)    
     return diversity_score, genre_counts
-
-
-def get_audio_features_batch(track_ids, access_token):
-    """Fetch audio features for multiple tracks in a single API call (max 100 tracks per request)."""
-    if not track_ids:
-        return []
-    
-    # Spotify API allows up to 100 IDs per request
-    batch_size = 100
-    all_features = []
-    
-    for i in range(0, len(track_ids), batch_size):
-        batch = track_ids[i:i+batch_size]
-        ids_param = ','.join(batch)
-        url = f"https://api.spotify.com/v1/audio-features?ids={ids_param}"
-        headers = {"Authorization": f"Bearer {access_token}"}
-        
-        try:
-            r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        except requests.exceptions.Timeout:
-            raise Exception("Spotify API request timed out. Please try again.")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Error connecting to Spotify API: {str(e)}")
-        
-        # If token expired, refresh and retry
-        if r.status_code == 401:
-            new_token = refresh_spotify_token()
-            if new_token:
-                headers = {"Authorization": f"Bearer {new_token}"}
-                try:
-                    r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-                except requests.exceptions.Timeout:
-                    raise Exception("Spotify API request timed out. Please try again.")
-                except requests.exceptions.RequestException as e:
-                    raise Exception(f"Error connecting to Spotify API: {str(e)}")
-            else:
-                r.raise_for_status()
-        
-        r.raise_for_status()
-        features_data = r.json().get("audio_features", [])
-        # Filter out None values (some tracks may not have audio features)
-        features_data = [f for f in features_data if f is not None]
-        all_features.extend(features_data)
-    
-    return all_features
-
-
-def filter_tracks_by_audio_features(tracks_with_features, min_danceability=None, max_danceability=None, 
-                                     min_bpm=None, max_bpm=None):
-    """
-    Filter tracks based on danceability and BPM ranges.
-    
-    Args:
-        tracks_with_features: List of dicts with 'track_info' (dict with uri, artist, track) 
-                              and 'features' (dict with danceability, tempo)
-        min_danceability: Minimum danceability (0.0 to 1.0)
-        max_danceability: Maximum danceability (0.0 to 1.0)
-        min_bpm: Minimum BPM (tempo)
-        max_bpm: Maximum BPM (tempo)
-    
-    Returns:
-        Filtered list of tracks matching criteria
-    """
-    filtered = []
-    
-    for item in tracks_with_features:
-        features = item.get('features')
-        if not features:
-            continue
-        
-        danceability = features.get('danceability')
-        tempo = features.get('tempo')
-        
-        # Skip if essential features are missing
-        if danceability is None or tempo is None:
-            continue
-        
-        # Check danceability range
-        if min_danceability is not None and danceability < min_danceability:
-            continue
-        if max_danceability is not None and danceability > max_danceability:
-            continue
-        
-        # Check BPM range
-        if min_bpm is not None and tempo < min_bpm:
-            continue
-        if max_bpm is not None and tempo > max_bpm:
-            continue
-        
-        filtered.append(item)
-    
-    return filtered
 
 
 def get_spotify_recommendations(seed_tracks, access_token, limit=20, min_danceability=None, 

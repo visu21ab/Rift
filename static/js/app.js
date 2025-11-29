@@ -1,5 +1,8 @@
 // Check authentication status on load
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize dark mode
+    initDarkMode();
+    
     checkAuthStatus();
     
     // Setup event listeners after DOM is ready
@@ -20,8 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Setup premium filter controls
-    setupPremiumFilters();
     
     if (playlistForm) {
         playlistForm.addEventListener('submit', async (e) => {
@@ -52,51 +53,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // Collect premium filter parameters
-            const premiumFiltersSection = document.getElementById('premiumFiltersSection');
             const requestBody = {
                 mood: mood,
                 playlist_name: playlistName,
                 track_count: trackCount
             };
-            
-            // Add premium filters if section is visible (user is premium)
-            if (premiumFiltersSection && premiumFiltersSection.style.display !== 'none') {
-                const danceabilityToggle = document.getElementById('danceabilityToggle');
-                const danceabilityRange = document.getElementById('danceabilityRange');
-                const bpmToggle = document.getElementById('bpmToggle');
-                const minBpmRange = document.getElementById('minBpmRange');
-                const maxBpmRange = document.getElementById('maxBpmRange');
-                
-                // Danceability: convert from 0-100 scale to 0-1 scale with a range
-                if (danceabilityToggle && danceabilityToggle.checked && danceabilityRange) {
-                    const danceabilityValue = parseInt(danceabilityRange.value, 10);
-                    // Create a range around the selected value (±10 points)
-                    const range = 10;
-                    const minDanceability = Math.max(0, (danceabilityValue - range) / 100);
-                    const maxDanceability = Math.min(1, (danceabilityValue + range) / 100);
-                    
-                    requestBody.min_danceability = minDanceability.toFixed(2);
-                    requestBody.max_danceability = maxDanceability.toFixed(2);
-                }
-                
-                // BPM range
-                if (bpmToggle && bpmToggle.checked) {
-                    if (minBpmRange) {
-                        const minBpm = parseFloat(minBpmRange.value);
-                        if (!isNaN(minBpm) && minBpm >= 0) {
-                            requestBody.min_bpm = minBpm;
-                        }
-                    }
-                    
-                    if (maxBpmRange) {
-                        const maxBpm = parseFloat(maxBpmRange.value);
-                        if (!isNaN(maxBpm) && maxBpm >= 0) {
-                            requestBody.max_bpm = maxBpm;
-                        }
-                    }
-                }
-            }
             
             // Hide previous results and errors
             document.getElementById('resultsSection').style.display = 'none';
@@ -177,12 +138,6 @@ function updateUserHeader(data) {
         if (userCredits) userCredits.textContent = `Credits: ${data.credits_remaining}`;
     }
     
-    // Show/hide premium filters based on subscription
-    const premiumFiltersSection = document.getElementById('premiumFiltersSection');
-    if (premiumFiltersSection) {
-        const isPremium = data.subscription_plan === 'premium';
-        premiumFiltersSection.style.display = isPremium ? 'block' : 'none';
-    }
 }
 
 // Display results
@@ -286,77 +241,23 @@ function countSentences(text) {
     return sentences.length > 0 ? sentences.length : 1; // At least 1 if there's any text
 }
 
-// Setup premium filter controls
-function setupPremiumFilters() {
-    // Danceability toggle and slider
-    const danceabilityToggle = document.getElementById('danceabilityToggle');
-    const danceabilityRange = document.getElementById('danceabilityRange');
-    const danceabilityValue = document.getElementById('danceabilityValue');
-    const danceabilityContainer = document.getElementById('danceabilityContainer');
+
+// Dark Mode Functions
+function initDarkMode() {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    if (!darkModeToggle) return;
     
-    if (danceabilityToggle && danceabilityContainer) {
-        danceabilityToggle.addEventListener('change', (e) => {
-            const isEnabled = e.target.checked;
-            danceabilityContainer.style.display = isEnabled ? 'block' : 'none';
-            if (danceabilityRange) {
-                danceabilityRange.disabled = !isEnabled;
-            }
-        });
-    }
+    // Load saved theme preference or default to light
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
     
-    if (danceabilityRange && danceabilityValue) {
-        // Update value display when slider changes
-        danceabilityRange.addEventListener('input', (e) => {
-            danceabilityValue.textContent = e.target.value;
-        });
+    // Add click event listener
+    darkModeToggle.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
         
-        // Initialize display
-        danceabilityValue.textContent = danceabilityRange.value;
-    }
-    
-    // BPM toggle and sliders
-    const bpmToggle = document.getElementById('bpmToggle');
-    const minBpmRange = document.getElementById('minBpmRange');
-    const maxBpmRange = document.getElementById('maxBpmRange');
-    const minBpmValue = document.getElementById('minBpmValue');
-    const maxBpmValue = document.getElementById('maxBpmValue');
-    const bpmContainer = document.getElementById('bpmContainer');
-    
-    if (bpmToggle && bpmContainer) {
-        bpmToggle.addEventListener('change', (e) => {
-            const isEnabled = e.target.checked;
-            bpmContainer.style.display = isEnabled ? 'flex' : 'none';
-            if (minBpmRange) {
-                minBpmRange.disabled = !isEnabled;
-            }
-            if (maxBpmRange) {
-                maxBpmRange.disabled = !isEnabled;
-            }
-        });
-    }
-    
-    if (minBpmRange && minBpmValue) {
-        minBpmRange.addEventListener('input', (e) => {
-            minBpmValue.textContent = e.target.value;
-            // Ensure min doesn't exceed max
-            if (maxBpmRange && parseFloat(e.target.value) > parseFloat(maxBpmRange.value)) {
-                maxBpmRange.value = e.target.value;
-                maxBpmValue.textContent = e.target.value;
-            }
-        });
-        minBpmValue.textContent = minBpmRange.value;
-    }
-    
-    if (maxBpmRange && maxBpmValue) {
-        maxBpmRange.addEventListener('input', (e) => {
-            maxBpmValue.textContent = e.target.value;
-            // Ensure max doesn't go below min
-            if (minBpmRange && parseFloat(e.target.value) < parseFloat(minBpmRange.value)) {
-                minBpmRange.value = e.target.value;
-                minBpmValue.textContent = e.target.value;
-            }
-        });
-        maxBpmValue.textContent = maxBpmRange.value;
-    }
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+    });
 }
 
