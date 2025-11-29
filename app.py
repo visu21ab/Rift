@@ -203,6 +203,22 @@ class Invite(db.Model):
         return True
 
 
+class PasswordResetToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def is_valid(self) -> bool:
+        if self.used_at:
+            return False
+        if datetime.utcnow() > self.expires_at:
+            return False
+        return True
+
+
 class PlaylistUsage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -320,6 +336,32 @@ def send_invite_email(email: str, token: str, credits: int) -> None:
         smtp.send_message(message)
 
 
+def send_password_reset_email(email: str, reset_link: str) -> None:
+    """Send password reset email to user"""
+    if not GMAIL_USERNAME or not GMAIL_APP_PASSWORD:
+        raise RuntimeError("Email credentials are not configured. Set GMAIL_USERNAME and GMAIL_APP_PASSWORD.")
+
+    subject = "Reset Your Rift Password"
+    body = (
+        f"Hi,\n\n"
+        f"You requested to reset your password for Rift. Click the link below to reset it:\n\n"
+        f"Reset link: {reset_link}\n\n"
+        f"This link will expire in 24 hours.\n\n"
+        f"If you did not request this password reset, you can safely ignore this email.\n\n"
+        f"— Rift Team"
+    )
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = GMAIL_USERNAME
+    message["To"] = email
+    message.set_content(body)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(GMAIL_USERNAME, GMAIL_APP_PASSWORD)
+        smtp.send_message(message)
+
+
 def generate_invite(email: str, credits: int, expires_in_days: int = 7) -> Invite:
     token = secrets.token_urlsafe(24)
     invite = Invite(
@@ -339,6 +381,18 @@ def _is_safe_redirect(target: str) -> bool:
     host_url = urllib.parse.urlparse(request.host_url)
     redirect_url = urllib.parse.urlparse(urllib.parse.urljoin(request.host_url, target))
     return redirect_url.scheme in ('http', 'https') and host_url.netloc == redirect_url.netloc
+
+
+def count_sentences(text: str) -> int:
+    """Count the number of sentences in a text string"""
+    if not text or not text.strip():
+        return 0
+    # Split by sentence-ending punctuation followed by whitespace or end of string
+    # This handles . ! ? followed by space, newline, or end of string
+    sentences = re.split(r'[.!?]+(?:\s+|$)', text.strip())
+    # Filter out empty strings
+    sentences = [s for s in sentences if s.strip()]
+    return len(sentences) if sentences else 1  # At least 1 if there's any text
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -363,6 +417,105 @@ def auth_login():
             error = "Invalid email or password."
 
     return render_template('auth_login.html', error=error, next=next_url)
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Generate a password reset token for a user and send email"""
+    if g.user:
+        return redirect(url_for('index'))
+
+    error = None
+    success = None
+    reset_token = None
+    reset_link = None
+    email_sent = False
+
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+
+        if not email:
+            error = "Email is required."
+        else:
+            user = User.query.filter_by(email=email).first()
+            if user:
+                # Invalidate any existing unused tokens for this user
+                existing_tokens = PasswordResetToken.query.filter_by(
+                    user_id=user.id,
+                    used_at=None
+                ).all()
+                for token in existing_tokens:
+                    token.used_at = datetime.utcnow()
+
+                # Generate new reset token
+                token = secrets.token_urlsafe(32)
+                reset_token_obj = PasswordResetToken(
+                    user_id=user.id,
+                    token=token,
+                    expires_at=datetime.utcnow() + timedelta(hours=24)  # Token valid for 24 hours
+                )
+                db.session.add(reset_token_obj)
+                db.session.commit()
+
+                reset_token = token
+                reset_link = f"{APP_BASE_URL.rstrip('/')}/reset-password/{token}"
+                
+                # Send password reset email
+                if INVITE_EMAIL_ENABLED and GMAIL_USERNAME and GMAIL_APP_PASSWORD:
+                    try:
+                        send_password_reset_email(email, reset_link)
+                        email_sent = True
+                    except Exception as exc:
+                        app.logger.exception("Failed to send password reset email", exc_info=True)
+                        # Continue even if email fails - user can still use the link shown on page
+                
+                success = True
+            else:
+                # Don't reveal if email exists or not (security best practice)
+                success = True
+                reset_token = None
+
+    return render_template('forgot_password.html', error=error, success=success, 
+                          reset_token=reset_token, reset_link=reset_link, email_sent=email_sent)
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Reset password using a reset token"""
+    if g.user:
+        return redirect(url_for('index'))
+
+    reset_token_obj = PasswordResetToken.query.filter_by(token=token).first()
+    
+    if not reset_token_obj or not reset_token_obj.is_valid():
+        return render_template('reset_password.html', error="Invalid or expired reset token.", token=token)
+
+    user = db.session.get(User, reset_token_obj.user_id)
+    if not user:
+        return render_template('reset_password.html', error="User not found.", token=token)
+
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password') or ''
+        confirm = request.form.get('confirm_password') or ''
+
+        if len(password) < 8:
+            error = "Password must be at least 8 characters long."
+        elif password != confirm:
+            error = "Passwords do not match."
+        else:
+            # Update password
+            user.set_password(password)
+            # Mark token as used
+            reset_token_obj.used_at = datetime.utcnow()
+            db.session.commit()
+
+            # Auto-login user
+            session.clear()
+            session['user_id'] = user.id
+            return redirect(url_for('index'))
+
+    return render_template('reset_password.html', error=error, token=token, email=user.email)
 
 
 @app.route('/invite/<token>', methods=['GET', 'POST'])
@@ -653,6 +806,16 @@ def generate_playlist():
     
     if not mood:
         return jsonify({'error': 'Mood description is required'}), 400
+
+    # Validate prompt length (max 5 sentences)
+    mood_sentences = count_sentences(mood)
+    if mood_sentences > 5:
+        return jsonify({'error': 'Mood description must be 5 sentences or less. Please shorten your description.'}), 400
+
+    # Validate playlist name length (max 5 sentences)
+    playlist_name_sentences = count_sentences(playlist_name)
+    if playlist_name_sentences > 5:
+        return jsonify({'error': 'Playlist name must be 5 sentences or less. Please shorten your playlist name.'}), 400
 
     if g.user.credits_remaining <= 0:
         return jsonify({'error': 'You have no playlist credits remaining.'}), 403

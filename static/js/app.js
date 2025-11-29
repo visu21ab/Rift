@@ -35,6 +35,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
+            // Validate sentence count for mood (max 5 sentences)
+            const moodSentences = countSentences(mood);
+            if (moodSentences > 5) {
+                showError('Mood description must be 5 sentences or less. Please shorten your description.');
+                return;
+            }
+            
+            // Validate sentence count for playlist name (max 5 sentences)
+            const playlistNameSentences = countSentences(playlistName);
+            if (playlistNameSentences > 5) {
+                showError('Playlist name must be 5 sentences or less. Please shorten your playlist name.');
+                return;
+            }
+            
             // Hide previous results and errors
             document.getElementById('resultsSection').style.display = 'none';
             document.getElementById('errorMessage').style.display = 'none';
@@ -208,5 +222,15 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Count sentences in a text string
+function countSentences(text) {
+    if (!text || !text.trim()) {
+        return 0;
+    }
+    // Split by sentence-ending punctuation followed by whitespace or end of string
+    const sentences = text.trim().split(/[.!?]+(?:\s+|$)/).filter(s => s.trim());
+    return sentences.length > 0 ? sentences.length : 1; // At least 1 if there's any text
 }
 
