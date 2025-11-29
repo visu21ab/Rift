@@ -101,8 +101,14 @@
                         </div>
                         
                         <div class="form-group">
-                            <label for="danceabilityRange" class="form-label">Danceability</label>
-                            <div class="range-input-container">
+                            <div class="filter-toggle-container">
+                                <label for="danceabilityToggle" class="form-label">Danceability</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="danceabilityToggle" class="toggle-input">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="range-input-container" id="danceabilityContainer" style="display: none;">
                                 <input
                                     type="range"
                                     id="danceabilityRange"
@@ -111,6 +117,7 @@
                                     min="0"
                                     max="100"
                                     value="50"
+                                    disabled
                                 >
                                 <div class="range-labels">
                                     <span>Low (0)</span>
@@ -122,34 +129,56 @@
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">BPM Range (Tempo)</label>
-                            <div class="bpm-inputs">
-                                <div class="bpm-input-group">
-                                    <label for="minBpm" class="bpm-label">Min BPM</label>
-                                    <input
-                                        type="number"
-                                        id="minBpm"
-                                        name="minBpm"
-                                        class="form-input"
-                                        min="0"
-                                        max="200"
-                                        placeholder="e.g. 80"
-                                    >
+                            <div class="filter-toggle-container">
+                                <label class="form-label">BPM Range (Tempo)</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="bpmToggle" class="toggle-input">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="bpm-sliders-container" id="bpmContainer" style="display: none;">
+                                <div class="bpm-slider-group">
+                                    <label for="minBpmRange" class="bpm-label">Min BPM</label>
+                                    <div class="range-input-container">
+                                        <input
+                                            type="range"
+                                            id="minBpmRange"
+                                            name="minBpmRange"
+                                            class="form-range"
+                                            min="0"
+                                            max="200"
+                                            value="60"
+                                            disabled
+                                        >
+                                        <div class="range-labels">
+                                            <span>0</span>
+                                            <span id="minBpmValue">60</span>
+                                            <span>200</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="bpm-input-group">
-                                    <label for="maxBpm" class="bpm-label">Max BPM</label>
-                                    <input
-                                        type="number"
-                                        id="maxBpm"
-                                        name="maxBpm"
-                                        class="form-input"
-                                        min="0"
-                                        max="200"
-                                        placeholder="e.g. 120"
-                                    >
+                                <div class="bpm-slider-group">
+                                    <label for="maxBpmRange" class="bpm-label">Max BPM</label>
+                                    <div class="range-input-container">
+                                        <input
+                                            type="range"
+                                            id="maxBpmRange"
+                                            name="maxBpmRange"
+                                            class="form-range"
+                                            min="0"
+                                            max="200"
+                                            value="140"
+                                            disabled
+                                        >
+                                        <div class="range-labels">
+                                            <span>0</span>
+                                            <span id="maxBpmValue">140</span>
+                                            <span>200</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <p class="form-hint">Set the tempo range in beats per minute. Leave empty for no limit.</p>
+                            <p class="form-hint">Set the tempo range in beats per minute.</p>
                         </div>
                     </div>
 

@@ -62,12 +62,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Add premium filters if section is visible (user is premium)
             if (premiumFiltersSection && premiumFiltersSection.style.display !== 'none') {
+                const danceabilityToggle = document.getElementById('danceabilityToggle');
                 const danceabilityRange = document.getElementById('danceabilityRange');
-                const minBpmInput = document.getElementById('minBpm');
-                const maxBpmInput = document.getElementById('maxBpm');
+                const bpmToggle = document.getElementById('bpmToggle');
+                const minBpmRange = document.getElementById('minBpmRange');
+                const maxBpmRange = document.getElementById('maxBpmRange');
                 
                 // Danceability: convert from 0-100 scale to 0-1 scale with a range
-                if (danceabilityRange) {
+                if (danceabilityToggle && danceabilityToggle.checked && danceabilityRange) {
                     const danceabilityValue = parseInt(danceabilityRange.value, 10);
                     // Create a range around the selected value (±10 points)
                     const range = 10;
@@ -79,17 +81,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // BPM range
-                if (minBpmInput && minBpmInput.value.trim()) {
-                    const minBpm = parseFloat(minBpmInput.value);
-                    if (!isNaN(minBpm) && minBpm >= 0) {
-                        requestBody.min_bpm = minBpm;
+                if (bpmToggle && bpmToggle.checked) {
+                    if (minBpmRange) {
+                        const minBpm = parseFloat(minBpmRange.value);
+                        if (!isNaN(minBpm) && minBpm >= 0) {
+                            requestBody.min_bpm = minBpm;
+                        }
                     }
-                }
-                
-                if (maxBpmInput && maxBpmInput.value.trim()) {
-                    const maxBpm = parseFloat(maxBpmInput.value);
-                    if (!isNaN(maxBpm) && maxBpm >= 0) {
-                        requestBody.max_bpm = maxBpm;
+                    
+                    if (maxBpmRange) {
+                        const maxBpm = parseFloat(maxBpmRange.value);
+                        if (!isNaN(maxBpm) && maxBpm >= 0) {
+                            requestBody.max_bpm = maxBpm;
+                        }
                     }
                 }
             }
@@ -284,8 +288,21 @@ function countSentences(text) {
 
 // Setup premium filter controls
 function setupPremiumFilters() {
+    // Danceability toggle and slider
+    const danceabilityToggle = document.getElementById('danceabilityToggle');
     const danceabilityRange = document.getElementById('danceabilityRange');
     const danceabilityValue = document.getElementById('danceabilityValue');
+    const danceabilityContainer = document.getElementById('danceabilityContainer');
+    
+    if (danceabilityToggle && danceabilityContainer) {
+        danceabilityToggle.addEventListener('change', (e) => {
+            const isEnabled = e.target.checked;
+            danceabilityContainer.style.display = isEnabled ? 'block' : 'none';
+            if (danceabilityRange) {
+                danceabilityRange.disabled = !isEnabled;
+            }
+        });
+    }
     
     if (danceabilityRange && danceabilityValue) {
         // Update value display when slider changes
@@ -295,6 +312,51 @@ function setupPremiumFilters() {
         
         // Initialize display
         danceabilityValue.textContent = danceabilityRange.value;
+    }
+    
+    // BPM toggle and sliders
+    const bpmToggle = document.getElementById('bpmToggle');
+    const minBpmRange = document.getElementById('minBpmRange');
+    const maxBpmRange = document.getElementById('maxBpmRange');
+    const minBpmValue = document.getElementById('minBpmValue');
+    const maxBpmValue = document.getElementById('maxBpmValue');
+    const bpmContainer = document.getElementById('bpmContainer');
+    
+    if (bpmToggle && bpmContainer) {
+        bpmToggle.addEventListener('change', (e) => {
+            const isEnabled = e.target.checked;
+            bpmContainer.style.display = isEnabled ? 'flex' : 'none';
+            if (minBpmRange) {
+                minBpmRange.disabled = !isEnabled;
+            }
+            if (maxBpmRange) {
+                maxBpmRange.disabled = !isEnabled;
+            }
+        });
+    }
+    
+    if (minBpmRange && minBpmValue) {
+        minBpmRange.addEventListener('input', (e) => {
+            minBpmValue.textContent = e.target.value;
+            // Ensure min doesn't exceed max
+            if (maxBpmRange && parseFloat(e.target.value) > parseFloat(maxBpmRange.value)) {
+                maxBpmRange.value = e.target.value;
+                maxBpmValue.textContent = e.target.value;
+            }
+        });
+        minBpmValue.textContent = minBpmRange.value;
+    }
+    
+    if (maxBpmRange && maxBpmValue) {
+        maxBpmRange.addEventListener('input', (e) => {
+            maxBpmValue.textContent = e.target.value;
+            // Ensure max doesn't go below min
+            if (minBpmRange && parseFloat(e.target.value) < parseFloat(minBpmRange.value)) {
+                minBpmRange.value = e.target.value;
+                minBpmValue.textContent = e.target.value;
+            }
+        });
+        maxBpmValue.textContent = maxBpmRange.value;
     }
 }
 
