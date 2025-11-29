@@ -624,7 +624,6 @@ body {
 .playlist-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 20px;
     background: #ffffff;
     border-radius: 12px;
@@ -643,12 +642,19 @@ body {
     min-width: 0;
 }
 
-.playlist-name {
+.playlist-name-link {
     font-size: 16px;
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 4px;
     letter-spacing: -0.01em;
+    text-decoration: none;
+    display: inline-block;
+    transition: color 0.2s ease;
+}
+
+.playlist-name-link:hover {
+    color: var(--accent-primary);
 }
 
 .playlist-date {

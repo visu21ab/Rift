@@ -218,12 +218,11 @@ function displayPlaylists(playlists) {
         playlistItem.className = 'playlist-item';
         playlistItem.innerHTML = `
             <div class="playlist-info">
-                <div class="playlist-name">${escapeHtml(playlist.name || 'Untitled Playlist')}</div>
+                <a href="${playlist.spotify_url}" target="_blank" class="playlist-name-link">
+                    ${escapeHtml(playlist.name || 'Untitled Playlist')}
+                </a>
                 <div class="playlist-date">${new Date(playlist.created_at).toLocaleDateString()}</div>
             </div>
-            <a href="${playlist.spotify_url}" target="_blank" class="btn-secondary" style="text-decoration: none;">
-                Open in Spotify
-            </a>
         `;
         playlistsList.appendChild(playlistItem);
     });
