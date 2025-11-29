@@ -19,164 +19,170 @@
 <body>
     <div class="top-banner">
         {% if user %}
-        <div class="top-banner-info">
-            <span class="top-banner-identity" id="topBannerIdentity">
-                {{ user.spotify_display_name or user.email }}
-            </span>
-            <span class="top-banner-divider">•</span>
-            <span class="top-banner-credits" id="topBannerCredits">
-                Credits: {{ user.credits_remaining }}
-            </span>
+        <div class="top-banner-content">
+            <div class="top-banner-user">
+                <span class="top-banner-name" id="topBannerIdentity">
+                    {{ user.spotify_display_name or user.email }}
+                </span>
+                <span class="top-banner-divider">•</span>
+                <span class="top-banner-credits" id="topBannerCredits">
+                    {{ user.credits_remaining }} credits
+                </span>
+            </div>
         </div>
         {% else %}
         <a href="#aboutSection" class="top-banner-link">Learn more about Rift</a>
         {% endif %}
     </div>
-    <!-- Dark Mode Toggle -->
-    <button class="dark-mode-toggle" id="darkModeToggle" aria-label="Toggle dark mode">
-        <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-        </svg>
-        <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-        </svg>
-    </button>
 
-    <div class="container">
+    <div class="app-wrapper">
         <!-- Header -->
         <header class="header">
-            <div class="header-content">
-                <div class="logo">
-                    <span class="logo-text">Rift.</span>
-                </div>
-                <div class="auth-section" id="authSection">
-                    <button class="btn btn-primary" id="loginBtn">Connect Spotify</button>
+            <div class="header-inner">
+                <div class="logo">Rift</div>
+                <div class="header-actions" id="authSection">
                     <div class="user-info" id="userInfo" style="display: none;">
                         {% if user and user.is_admin %}
-                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-admin">Admin</a>
+                        <a href="{{ url_for('admin_dashboard') }}" class="btn-link">Admin</a>
                         {% endif %}
-                        <button class="btn btn-secondary" id="logoutBtn">Logout</button>
+                        <button class="btn-link" id="logoutBtn">Logout</button>
                     </div>
                 </div>
             </div>
         </header>
 
-        <!-- Hero Section -->
-        <section class="hero">
-            <div class="hero-content">
-                <h2 class="hero-title">Discover Your Sound</h2>
-                <p class="hero-subtitle">Transform your mood into a curated playlist powered by OpenAI directly to your Spotify</p>
-            </div>
-        </section>
-
         <!-- Main Content -->
         <main class="main-content">
-            <div class="form-container">
-                <form id="playlistForm" class="playlist-form">
-                    <div class="form-group">
-                        <label for="mood" class="form-label">Describe your mood</label>
-                        <textarea 
-                            id="mood" 
-                            name="mood" 
-                            class="form-input" 
-                            placeholder="eg. Late night New York jazz and rnb"
-                            rows="3"
-                            required
-                        ></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="playlistName" class="form-label">Playlist Name</label>
-                        <input 
-                            type="text" 
-                            id="playlistName" 
-                            name="playlistName" 
-                            class="form-input" 
-                            placeholder="My AI Playlist"
-                            value=""
-                        >
-                    </div>
-
-                    <div class="form-group">
-                        <label for="trackCount" class="form-label">Number of Tracks</label>
-                        <input
-                            type="number"
-                            id="trackCount"
-                            name="trackCount"
-                            class="form-input"
-                            min="1"
-                            max="50"
-                            value="25"
-                        >
-                        <p class="form-hint">Pick between 1 and 50 tracks for your playlist.</p>
-                    </div>
-
-
-                    <button type="submit" class="btn btn-primary btn-large" id="generateBtn">
-                        <span class="btn-text">Generate Playlist</span>
-                        <span class="btn-loader" style="display: none;">
-                            <svg class="spinner" viewBox="0 0 50 50">
-                                <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle>
-                            </svg>
-                        </span>
-                    </button>
-                </form>
-            </div>
-
-            <!-- Results Section -->
-            <section id="playlistSection">
-                <div id="resultsSection" class="results-section" style="display: none;">
-                    <div class="results-header">
-                        <a href="#" id="spotifyLink" target="_blank" class="btn btn-external">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                <polyline points="15 3 21 3 21 9"></polyline>
-                                <line x1="10" y1="14" x2="21" y2="3"></line>
-                            </svg>
-                            Open Playlist
-                        </a>
-                    </div>
-
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <div class="metric-value" id="indieMetric">--</div>
-                            <div class="metric-label">Indie Tracks</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-value" id="diversityMetric">--</div>
-                            <div class="metric-label">Genre Diversity</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-value" id="tracksMetric">--</div>
-                            <div class="metric-label">Tracks Added</div>
-                        </div>
-                    </div>
-
-                    <div class="tracks-container">
-                        <h4 class="tracks-title">Tracks</h4>
-                        <div id="tracksList" class="tracks-list"></div>
+            <!-- Step 1: Connect -->
+            <section class="step-section" id="stepConnect">
+                <div class="step-indicator">
+                    <div class="step-content">
+                        <h2 class="step-title">Connect Your Spotify</h2>
+                        <p class="step-description">Link your account to create playlists directly in Spotify</p>
+                        <button class="btn-primary btn-large" id="loginBtnStep">
+                            Connect Spotify
+                        </button>
                     </div>
                 </div>
             </section>
 
-            <section class="info-section" id="aboutSection">
-                <h3 class="section-heading">About Rift</h3>
-                <p class="section-copy">
-                    Rift translates moods into playlists with a refined editorial touch. A minimal workflow for richly textured sound. The generation doesn't factor in Spotify popularity scores or your listening history, which opens up music you might never discover otherwise.
-                </p>
+            <!-- Step 2: Describe Mood -->
+            <section class="step-section" id="stepMood">
+                <div class="step-indicator">
+                    <div class="step-content">
+                        <h2 class="step-title">Describe Your Mood</h2>
+                        <p class="step-description">Describe the kind of sound you are looking for</p>
+                        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                            <span class="loading-dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </span>
+                        </div>
+                        <form id="playlistForm" class="playlist-form">
+                            <div class="input-group">
+                                <textarea 
+                                    id="mood" 
+                                    name="mood" 
+                                    class="input-textarea" 
+                                    placeholder="e.g., Late night New York jazz and R&B"
+                                    rows="4"
+                                    required
+                                ></textarea>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="input-group">
+                                    <label class="input-label">Playlist Name</label>
+                                    <input 
+                                        type="text" 
+                                        id="playlistName" 
+                                        name="playlistName" 
+                                        class="input-text" 
+                                        placeholder="My AI Playlist"
+                                    >
+                                </div>
+
+                                <div class="input-group">
+                                    <label class="input-label">Tracks</label>
+                                    <input
+                                        type="number"
+                                        id="trackCount"
+                                        name="trackCount"
+                                        class="input-text"
+                                        min="1"
+                                        max="50"
+                                        value="25"
+                                    >
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn-primary btn-large" id="generateBtn">
+                                <span class="btn-text">Generate Playlist</span>
+                                <span class="btn-loader" style="display: none;">
+                                    <span class="loading-dots">
+                                        <span></span>
+                                        <span></span>
+                                        <span></span>
+                                    </span>
+                                </span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Results -->
+            <section class="step-section" id="stepResults">
+                <div id="resultsSection" class="results-section" style="display: none;">
+                    <div class="step-indicator">
+                        <div class="step-number step-complete">✓</div>
+                        <div class="step-content">
+                            <h2 class="step-title">Playlist Created</h2>
+                            <p class="step-description">Your AI-generated playlist is ready</p>
+                            
+                            <a href="#" id="spotifyLink" target="_blank" class="btn-primary btn-large btn-spotify">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z"/>
+                                </svg>
+                                Open in Spotify
+                            </a>
+
+                            <div class="metrics-row">
+                                <div class="metric-item">
+                                    <div class="metric-value" id="indieMetric">--</div>
+                                    <div class="metric-label">Indie</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value" id="diversityMetric">--</div>
+                                    <div class="metric-label">Diversity</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-value" id="tracksMetric">--</div>
+                                    <div class="metric-label">Tracks</div>
+                                </div>
+                            </div>
+
+                            <div class="tracks-preview">
+                                <div id="tracksList" class="tracks-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- About Section -->
+            <section class="about-section" id="aboutSection">
+                <div class="about-content">
+                    <p class="about-text">
+                        Rift translates moods into playlists with a refined editorial touch. A minimal workflow for richly textured sound. The generation doesn't factor in Spotify popularity scores or your listening history, which opens up music you might never discover otherwise.
+                    </p>
+                </div>
             </section>
 
             <!-- Footer -->
-            <footer style="margin-top: 80px; padding-top: 32px; border-top: 1px solid rgba(0,0,0,0.1); text-align: center;">
-                <a href="{{ url_for('privacy') }}" style="color: var(--text-muted); text-decoration: none; font-size: 14px;">Privacy Policy</a>
+            <footer class="footer">
+                <a href="{{ url_for('privacy') }}" class="footer-link">Privacy Policy</a>
             </footer>
 
             <!-- Error Message -->

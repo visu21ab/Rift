@@ -15,45 +15,203 @@
         })();
     </script>
     <style>
+        .admin-wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        
+        .admin-header {
+            margin-bottom: 48px;
+        }
+        
+        .admin-title {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .admin-subtitle {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+        }
+        
+        .admin-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 32px;
+            box-shadow: var(--shadow-md);
+        }
+        
+        .admin-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .admin-form-row {
+            display: grid;
+            grid-template-columns: 1fr 140px;
+            gap: 16px;
+            align-items: end;
+        }
+        
+        .admin-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .admin-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .admin-input {
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+        
+        .admin-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .admin-table-wrapper {
+            overflow-x: auto;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            background: #ffffff;
+        }
+        
         .admin-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 24px;
         }
-        .admin-table th,
-        .admin-table td {
-            padding: 14px 18px;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-            text-align: left;
-        }
+        
         .admin-table th {
+            padding: 16px 20px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
             text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 0.18em;
-            color: var(--text-muted);
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-primary);
         }
-        .admin-controls {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-            margin-top: 24px;
-            align-items: flex-end;
+        
+        .admin-table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 14px;
         }
+        
+        .admin-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .admin-table tr:hover {
+            background: var(--bg-primary);
+        }
+        
         .admin-badge {
-            display: inline-block;
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            background: rgba(22, 22, 22, 0.08);
-            color: var(--brand-black);
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: rgba(0, 0, 0, 0.1);
+            color: var(--accent-primary);
         }
+        
         .credits-input {
             width: 80px;
-            padding: 6px 10px;
-            border: 1px solid rgba(0,0,0,0.12);
-            background: #fff;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            color: var(--text-primary);
             text-align: center;
-            border-radius: 6px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+        
+        .credits-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .admin-message {
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-top: 16px;
+            display: none;
+        }
+        
+        .admin-message.success {
+            background: rgba(0, 0, 0, 0.05);
+            color: var(--accent-primary);
+            border: 1px solid var(--accent-primary);
+        }
+        
+        .admin-message.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .admin-message a {
+            color: inherit;
+            text-decoration: underline;
+        }
+        
+        .btn-admin-action {
+            padding: 8px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+        
+        .btn-admin-action:hover {
+            background: var(--accent-primary);
+            color: #ffffff;
+            border-color: var(--accent-primary);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
         }
     </style>
 </head>
@@ -75,59 +233,60 @@
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
     </button>
-    <div class="container">
+    <div class="admin-wrapper">
         <header class="header">
-            <div class="header-content">
-                <div class="logo">
-                    <span class="logo-text">Rift.</span>
-                </div>
-                <div class="auth-section">
-                    <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to app</a>
+            <div class="header-inner">
+                <div class="logo">Rift</div>
+                <div class="header-actions">
+                    <a href="{{ url_for('index') }}" class="btn-link">Back to app</a>
                 </div>
             </div>
         </header>
 
         <main class="main-content">
-            <section class="info-section" style="margin-top: 40px;">
-                <h3 class="section-heading">Admin Console</h3>
-                <p class="section-copy">Manage invitations, credits, and track activity.</p>
-            </section>
+            <div class="admin-header">
+                <h1 class="admin-title">Admin Console</h1>
+                <p class="admin-subtitle">Manage invitations, credits, and track user activity</p>
+            </div>
 
-            <div class="form-container" style="max-width: 960px; margin-top: 20px;">
-                <form id="inviteForm" class="playlist-form" style="background: rgba(0,0,0,0.02); padding: 24px; border-radius: 16px;">
-                    <div class="form-group" style="text-align: left;">
-                        <label for="inviteEmail" class="form-label" style="text-align: left;">Invite email</label>
-                        <input type="email" id="inviteEmail" name="inviteEmail" class="form-input" placeholder="guest@example.com" required>
+            <div class="admin-card">
+                <form id="inviteForm" class="admin-form">
+                    <div class="admin-form-row">
+                        <div class="admin-input-group">
+                            <label for="inviteEmail" class="admin-label">Invite Email</label>
+                            <input type="email" id="inviteEmail" name="inviteEmail" class="admin-input" placeholder="guest@example.com" required>
+                        </div>
+                        <div class="admin-input-group">
+                            <label for="inviteCredits" class="admin-label">Credits</label>
+                            <input type="number" id="inviteCredits" name="inviteCredits" class="admin-input" min="1" max="50" value="3" required>
+                        </div>
                     </div>
-                    <div class="form-group" style="text-align: left;">
-                        <label for="inviteCredits" class="form-label" style="text-align: left;">Credits</label>
-                        <input type="number" id="inviteCredits" name="inviteCredits" class="form-input" min="1" max="50" value="3">
-                        <p class="form-hint" style="text-align: left;">New users start with this many playlist generations.</p>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="align-self: flex-start;">Send invite</button>
-                    <div id="inviteMessage" class="form-hint" style="display: none;"></div>
+                    <button type="submit" class="btn-primary" style="align-self: flex-start; width: auto;">Send Invite</button>
+                    <div id="inviteMessage" class="admin-message"></div>
                 </form>
             </div>
 
-            <div class="form-container" style="max-width: 960px; margin-top: 40px;">
-                <table class="admin-table" id="usersTable">
-                    <thead>
-                        <tr>
-                            <th>Email</th>
-                            <th>Credits</th>
-                            <th>Spotify</th>
-                            <th>Usage</th>
-                            <th>Role</th>
-                            <th>Updated</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 32px;" id="usersTablePlaceholder">Loading users…</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="admin-card" style="padding: 0;">
+                <div class="admin-table-wrapper">
+                    <table class="admin-table" id="usersTable">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Credits</th>
+                                <th>Spotify</th>
+                                <th>Usage</th>
+                                <th>Role</th>
+                                <th>Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="7" class="empty-state" id="usersTablePlaceholder">Loading users…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </main>
     </div>
@@ -151,20 +310,19 @@
                     });
                     const data = await resp.json();
                     if (!resp.ok) throw new Error(data.error || 'Failed to send invite');
+                    messageEl.className = 'admin-message success';
                     if (data.email_sent) {
-                        messageEl.innerHTML = `Invitation sent to ${email}. Share link if needed: <a href="${data.invite_link}" target="_blank" rel="noopener noreferrer">${data.invite_link}</a>`;
-                        messageEl.style.color = 'var(--accent-blue)';
+                        messageEl.innerHTML = `✓ Invitation sent to ${email}. Share link if needed: <a href="${data.invite_link}" target="_blank" rel="noopener noreferrer">${data.invite_link}</a>`;
                     } else {
                         const info = data.message || 'Email not sent. Share this invite link manually:';
                         messageEl.innerHTML = `${info} <a href="${data.invite_link}" target="_blank" rel="noopener noreferrer">${data.invite_link}</a>`;
-                        messageEl.style.color = '#b8860b';
                     }
                     messageEl.style.display = 'block';
                     inviteForm.reset();
                 } catch (error) {
-                    messageEl.textContent = error.message;
+                    messageEl.className = 'admin-message error';
+                    messageEl.textContent = `✗ ${error.message}`;
                     messageEl.style.display = 'block';
-                    messageEl.style.color = '#d74949';
                 }
             });
         });
@@ -187,9 +345,8 @@
                 const row = document.createElement('tr');
                 const cell = document.createElement('td');
                 cell.colSpan = 7;
+                cell.className = 'empty-state';
                 cell.textContent = 'No users yet.';
-                cell.style.textAlign = 'center';
-                cell.style.padding = '28px';
                 row.appendChild(cell);
                 tbody.appendChild(row);
                 return;
@@ -238,7 +395,7 @@
 
                 const actionsCell = document.createElement('td');
                 const makeAdminBtn = document.createElement('button');
-                makeAdminBtn.className = 'btn btn-secondary';
+                makeAdminBtn.className = 'btn-admin-action';
                 makeAdminBtn.textContent = user.is_admin ? 'Remove admin' : 'Make admin';
                 makeAdminBtn.addEventListener('click', () => toggleAdmin(user.id, !user.is_admin));
                 actionsCell.appendChild(makeAdminBtn);

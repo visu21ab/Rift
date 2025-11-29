@@ -1,19 +1,18 @@
 // Check authentication status on load
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize dark mode
-    initDarkMode();
-    
     checkAuthStatus();
     
     // Setup event listeners after DOM is ready
-    const loginBtn = document.getElementById('loginBtn');
+    const loginBtnStep = document.getElementById('loginBtnStep');
     const logoutBtn = document.getElementById('logoutBtn');
     const playlistForm = document.getElementById('playlistForm');
     
-    if (loginBtn) {
-        loginBtn.addEventListener('click', () => {
-            window.location.href = '/spotify/connect';
-        });
+    const connectToSpotify = () => {
+        window.location.href = '/spotify/connect';
+    };
+    
+    if (loginBtnStep) {
+        loginBtnStep.addEventListener('click', connectToSpotify);
     }
     
     if (logoutBtn) {
@@ -63,6 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('resultsSection').style.display = 'none';
             document.getElementById('errorMessage').style.display = 'none';
             
+            // Show loading indicator
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            if (loadingIndicator) loadingIndicator.style.display = 'flex';
+            
             // Show loading state
             const generateBtn = document.getElementById('generateBtn');
             if (!generateBtn) return;
@@ -70,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const btnLoader = generateBtn.querySelector('.btn-loader');
             
             if (btnText) btnText.style.display = 'none';
-            if (btnLoader) btnLoader.style.display = 'inline-block';
+            if (btnLoader) btnLoader.style.display = 'inline-flex';
             generateBtn.disabled = true;
             
             try {
@@ -94,6 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 showError(error.message);
             } finally {
+                // Hide loading indicator
+                if (loadingIndicator) loadingIndicator.style.display = 'none';
+                
                 // Reset button state
                 if (btnText) btnText.style.display = 'inline';
                 if (btnLoader) btnLoader.style.display = 'none';
@@ -115,29 +121,42 @@ async function checkAuthStatus() {
         }
 
         updateUserHeader(data);
+        updateStepVisibility(data);
     } catch (error) {
         console.error('Error checking auth status:', error);
     }
 }
 
+// Update step visibility based on Spotify connection
+function updateStepVisibility(data) {
+    const loginBtnStep = document.getElementById('loginBtnStep');
+    
+    if (data.spotify_connected) {
+        // Hide the connect button when connected
+        if (loginBtnStep) {
+            loginBtnStep.style.display = 'none';
+        }
+    } else {
+        // Show the connect button when not connected
+        if (loginBtnStep) {
+            loginBtnStep.style.display = 'inline-flex';
+        }
+    }
+}
+
 function updateUserHeader(data) {
-    const loginBtn = document.getElementById('loginBtn');
     const userInfo = document.getElementById('userInfo');
     const topBannerIdentity = document.getElementById('topBannerIdentity');
     const topBannerCredits = document.getElementById('topBannerCredits');
-    const userName = document.getElementById('userName');
-    const userCredits = document.getElementById('userCredits');
 
+    // Update header buttons
     if (userInfo) userInfo.style.display = 'flex';
-    if (loginBtn) loginBtn.style.display = data.spotify_connected ? 'none' : 'inline-flex';
+    
     const displayName = data.spotify_display_name || data.email || 'User';
     if (topBannerIdentity) topBannerIdentity.textContent = displayName;
-    if (userName) userName.textContent = displayName;
     if (typeof data.credits_remaining === 'number') {
-        if (topBannerCredits) topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
-        if (userCredits) userCredits.textContent = `Credits: ${data.credits_remaining}`;
+        if (topBannerCredits) topBannerCredits.textContent = `${data.credits_remaining} credits`;
     }
-    
 }
 
 // Display results
@@ -170,8 +189,8 @@ function displayResults(data) {
     const topBannerCredits = document.getElementById('topBannerCredits');
     const userCredits = document.getElementById('userCredits');
     if (typeof data.credits_remaining === 'number') {
-        if (topBannerCredits) topBannerCredits.textContent = `Credits: ${data.credits_remaining}`;
-        if (userCredits) userCredits.textContent = `Credits: ${data.credits_remaining}`;
+        if (topBannerCredits) topBannerCredits.textContent = `${data.credits_remaining} credits`;
+        if (userCredits) userCredits.textContent = `${data.credits_remaining} credits`;
     }
     
     // Update Spotify link
@@ -242,22 +261,4 @@ function countSentences(text) {
 }
 
 
-// Dark Mode Functions
-function initDarkMode() {
-    const darkModeToggle = document.getElementById('darkModeToggle');
-    if (!darkModeToggle) return;
-    
-    // Load saved theme preference or default to light
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    
-    // Add click event listener
-    darkModeToggle.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        
-        document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-    });
-}
 
