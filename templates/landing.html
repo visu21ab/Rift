@@ -51,6 +51,14 @@
                 </div>
                 <a href="{{ url_for('auth_login') }}" class="create-account-text">Create account</a>
             </section>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const video = document.querySelector('.landing-video');
+                    if (video) {
+                        video.playbackRate = 2.0;
+                    }
+                });
+            </script>
 
             <!-- About Section -->
             <section class="about-section" id="aboutSection">
