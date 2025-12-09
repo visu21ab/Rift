@@ -632,9 +632,10 @@ def require_spotify_auth(f):
 
 
 @app.route('/')
-@login_required
 def index():
-    """Main page (requires authenticated user)"""
+    """Main page - shows landing page if not logged in, app if logged in"""
+    if g.user is None:
+        return render_template('landing.html')
     return render_template('index.html', user=g.user)
 
 

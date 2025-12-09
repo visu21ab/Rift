@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rift - AI Playlist Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+    <script>
+        // Initialize theme immediately to prevent FOUC
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-inner">
+                <a href="{{ url_for('index') }}" class="logo" style="text-decoration: none; color: inherit;">Rift</a>
+                <div class="header-actions">
+                    <a href="{{ url_for('auth_login') }}" class="btn-secondary">Sign In</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Hero Section -->
+            <section class="landing-hero">
+                <div class="hero-content">
+                    <h1 class="hero-title">Translate moods into playlists</h1>
+                    <p class="hero-description">AI-powered playlist generation with a refined editorial touch. Discover music you might never find otherwise.</p>
+                    <div class="hero-actions">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Video Section -->
+            <section class="landing-video-section">
+                <div class="video-container">
+                    <video class="landing-video" autoplay muted loop playsinline>
+                        <source src="{{ url_for('static', filename='videos/landing-video.mp4') }}" type="video/mp4">
+                        <source src="{{ url_for('static', filename='videos/landing-video.webm') }}" type="video/webm">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                <a href="{{ url_for('auth_login') }}" class="create-account-text">Create account</a>
+            </section>
+
+            <!-- About Section -->
+            <section class="about-section" id="aboutSection">
+                <div class="about-content">
+                    <p class="about-text">
+                        Rift translates moods into playlists with a refined editorial touch. A minimal workflow for richly textured sound. The generation doesn't factor in Spotify popularity scores or your listening history, which opens up music you might never discover otherwise.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <a href="{{ url_for('privacy') }}" class="footer-link">Privacy Policy</a>
+            </footer>
+        </main>
+    </div>
+</body>
+</html>
+
