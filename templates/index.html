@@ -16,10 +16,10 @@
         })();
     </script>
 </head>
-<body>
+<body {% if subscription_success %}data-subscription-success="true"{% endif %} {% if subscription_canceled %}data-subscription-canceled="true"{% endif %}>
     <div class="top-banner">
         {% if user %}
-        <div class="top-banner-content">
+            <div class="top-banner-content">
             <div class="top-banner-user">
                 <span class="top-banner-name" id="topBannerIdentity">
                     {{ user.spotify_display_name or user.email }}
@@ -33,6 +33,9 @@
                     Loading...
                 </span>
             </div>
+            <button id="subscribeBtn" class="btn-subscribe" style="display: none;">
+                Subscribe to Premium
+            </button>
         </div>
         {% else %}
         <a href="#aboutSection" class="top-banner-link">Learn more about Rift</a>
@@ -189,6 +192,9 @@
                     <p class="about-text">
                         Rift translates moods into playlists with a refined editorial touch. A minimal workflow for richly textured sound. The generation doesn't factor in Spotify popularity scores or your listening history, which opens up music you might never discover otherwise.
                     </p>
+                    <button id="cancelSubscriptionBtn" class="cancel-subscription-link" style="display: none;">
+                        Cancel Subscription
+                    </button>
                 </div>
             </section>
 

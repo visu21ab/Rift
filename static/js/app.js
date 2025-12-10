@@ -2,6 +2,20 @@
 document.addEventListener('DOMContentLoaded', () => {
     checkAuthStatus();
     
+    // Check for subscription success/cancel messages
+    const body = document.body;
+    if (body.getAttribute('data-subscription-success') === 'true') {
+        showError('Subscription successful! You now have access to 25 playlists per month.', 'success');
+        // Refresh auth status to update UI
+        setTimeout(() => checkAuthStatus(), 500);
+        // Remove attribute to prevent showing message again
+        body.removeAttribute('data-subscription-success');
+    }
+    if (body.getAttribute('data-subscription-canceled') === 'true') {
+        showError('Subscription canceled. You can subscribe again anytime.', 'success');
+        body.removeAttribute('data-subscription-canceled');
+    }
+    
     // Setup event listeners after DOM is ready
     const loginBtnStep = document.getElementById('loginBtnStep');
     const logoutBtn = document.getElementById('logoutBtn');
@@ -40,6 +54,18 @@ document.addEventListener('DOMContentLoaded', () => {
             // Call logout endpoint to clear session
             window.location.href = '/logout';
         });
+    }
+    
+    // Subscribe button handler
+    const subscribeBtn = document.getElementById('subscribeBtn');
+    if (subscribeBtn) {
+        subscribeBtn.addEventListener('click', handleSubscribe);
+    }
+    
+    // Cancel subscription button handler
+    const cancelSubscriptionBtn = document.getElementById('cancelSubscriptionBtn');
+    if (cancelSubscriptionBtn) {
+        cancelSubscriptionBtn.addEventListener('click', handleCancelSubscription);
     }
     
     
@@ -108,7 +134,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await response.json();
                 
                 if (!response.ok) {
-                    throw new Error(data.error || 'Failed to generate playlist');
+                    // Check if upgrade is required
+                    if (data.upgrade_required) {
+                        showUpgradePrompt(data.error || 'You have reached your monthly limit. Upgrade to premium for 25 playlists per month.');
+                    } else {
+                        throw new Error(data.error || 'Failed to generate playlist');
+                    }
+                    return;
                 }
                 
                 // Show results
@@ -170,6 +202,8 @@ function updateUserHeader(data) {
     const topBannerIdentity = document.getElementById('topBannerIdentity');
     const topBannerPlan = document.getElementById('topBannerPlan');
     const topBannerCredits = document.getElementById('topBannerCredits');
+    const subscribeBtn = document.getElementById('subscribeBtn');
+    const cancelSubscriptionBtn = document.getElementById('cancelSubscriptionBtn');
 
     // Update header buttons
     if (userInfo) userInfo.style.display = 'flex';
@@ -184,6 +218,24 @@ function updateUserHeader(data) {
     if (topBannerPlan) {
         const plan = data.subscription_plan === 'premium' ? 'Premium' : 'Trial';
         topBannerPlan.textContent = plan;
+    }
+    
+    // Show/hide subscribe button based on subscription plan
+    if (subscribeBtn) {
+        if (data.subscription_plan === 'trial' && !data.is_admin) {
+            subscribeBtn.style.display = 'inline-block';
+        } else {
+            subscribeBtn.style.display = 'none';
+        }
+    }
+    
+    // Show/hide cancel subscription button for premium users
+    if (cancelSubscriptionBtn) {
+        if (data.subscription_plan === 'premium' && !data.is_admin) {
+            cancelSubscriptionBtn.style.display = 'block';
+        } else {
+            cancelSubscriptionBtn.style.display = 'none';
+        }
     }
     
     // Update playlist usage display (x/y format)
@@ -326,10 +378,13 @@ function displayResults(data) {
 }
 
 // Show error message
-function showError(message) {
+function showError(message, type = 'error') {
     const errorDiv = document.getElementById('errorMessage');
     if (!errorDiv) return;
+    
+    // Clear any HTML content and set text
     errorDiv.textContent = message;
+    errorDiv.className = type === 'success' ? 'error-message success-message' : 'error-message';
     errorDiv.style.display = 'block';
     
     // Scroll to error
@@ -354,6 +409,109 @@ function countSentences(text) {
     // Split by sentence-ending punctuation followed by whitespace or end of string
     const sentences = text.trim().split(/[.!?]+(?:\s+|$)/).filter(s => s.trim());
     return sentences.length > 0 ? sentences.length : 1; // At least 1 if there's any text
+}
+
+// Handle subscription checkout
+async function handleSubscribe() {
+    const subscribeBtn = document.getElementById('subscribeBtn');
+    if (!subscribeBtn) return;
+    
+    // Disable button and show loading state
+    subscribeBtn.disabled = true;
+    const originalText = subscribeBtn.textContent;
+    subscribeBtn.textContent = 'Loading...';
+    
+    try {
+        const response = await fetch('/api/create-checkout-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to create checkout session');
+        }
+        
+        // Redirect to Stripe Checkout
+        if (data.checkout_url) {
+            window.location.href = data.checkout_url;
+        } else {
+            throw new Error('No checkout URL received');
+        }
+    } catch (error) {
+        showError(error.message);
+        subscribeBtn.disabled = false;
+        subscribeBtn.textContent = originalText;
+    }
+}
+
+// Handle cancel subscription
+async function handleCancelSubscription() {
+    const cancelBtn = document.getElementById('cancelSubscriptionBtn');
+    if (!cancelBtn) return;
+    
+    // Confirm cancellation
+    if (!confirm('Are you sure you want to cancel your subscription? You will continue to have access until the end of your billing period, then be downgraded to the trial plan (3 playlists per month).')) {
+        return;
+    }
+    
+    // Disable button and show loading state
+    cancelBtn.disabled = true;
+    const originalText = cancelBtn.textContent;
+    cancelBtn.textContent = 'Canceling...';
+    
+    try {
+        const response = await fetch('/api/cancel-subscription', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to cancel subscription');
+        }
+        
+        // Show success message
+        showError('Subscription will be canceled at the end of your billing period. You will be downgraded to trial plan.', 'success');
+        
+        // Refresh auth status to update UI
+        setTimeout(() => {
+            checkAuthStatus();
+        }, 1000);
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = originalText;
+    }
+}
+
+// Show upgrade prompt with subscribe button
+function showUpgradePrompt(message) {
+    const errorDiv = document.getElementById('errorMessage');
+    if (!errorDiv) return;
+    
+    errorDiv.innerHTML = `
+        <div style="text-align: center;">
+            <p style="margin-bottom: 1rem;">${escapeHtml(message)}</p>
+            <button class="btn-primary" onclick="handleSubscribe()" style="margin-top: 0.5rem;">
+                Subscribe to Premium (49 SEK/month)
+            </button>
+        </div>
+    `;
+    errorDiv.style.display = 'block';
+    
+    // Scroll to error
+    errorDiv.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center' 
+    });
 }
 
 
