@@ -144,25 +144,6 @@
             color: var(--accent-primary);
         }
         
-        .credits-input {
-            width: 80px;
-            padding: 8px 12px;
-            border: 1px solid var(--border-color);
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            text-align: center;
-            border-radius: 8px;
-            font-size: 14px;
-            font-family: inherit;
-            transition: all 0.2s ease;
-        }
-        
-        .credits-input:focus {
-            outline: none;
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
-        }
-        
         .admin-message {
             padding: 12px 16px;
             border-radius: 12px;
@@ -272,7 +253,6 @@
                     <thead>
                         <tr>
                             <th>Email</th>
-                            <th>Credits</th>
                             <th>Spotify</th>
                             <th>Usage</th>
                             <th>Role</th>
@@ -282,7 +262,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                                <td colspan="7" class="empty-state" id="usersTablePlaceholder">Loading users…</td>
+                                <td colspan="6" class="empty-state" id="usersTablePlaceholder">Loading users…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -344,7 +324,7 @@
             if (!users.length) {
                 const row = document.createElement('tr');
                 const cell = document.createElement('td');
-                cell.colSpan = 7;
+                cell.colSpan = 6;
                 cell.className = 'empty-state';
                 cell.textContent = 'No users yet.';
                 row.appendChild(cell);
@@ -358,17 +338,6 @@
                 const emailCell = document.createElement('td');
                 emailCell.textContent = user.email;
                 row.appendChild(emailCell);
-
-                const creditsCell = document.createElement('td');
-                const creditsInput = document.createElement('input');
-                creditsInput.type = 'number';
-                creditsInput.value = user.credits_remaining;
-                creditsInput.min = 0;
-                creditsInput.max = 99;
-                creditsInput.className = 'credits-input';
-                creditsInput.addEventListener('change', () => updateCredits(user.id, creditsInput.value));
-                creditsCell.appendChild(creditsInput);
-                row.appendChild(creditsCell);
 
                 const spotifyCell = document.createElement('td');
                 spotifyCell.textContent = user.spotify_display_name || '—';
@@ -405,18 +374,6 @@
             });
         }
 
-        async function updateCredits(userId, credits) {
-            try {
-                await fetch(`/api/admin/users/${userId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ credits_remaining: credits })
-                });
-            } catch (error) {
-                console.error('Failed to update credits', error);
-                fetchUsers();
-            }
-        }
 
         async function toggleAdmin(userId, isAdmin) {
             try {

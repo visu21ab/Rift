@@ -151,6 +151,15 @@ INVITE_EMAIL_ENABLED = os.getenv("INVITE_EMAIL_ENABLED", "").lower() in ("1", "t
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000")
 DEFAULT_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+# Stripe configuration
+import stripe
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")  # Monthly subscription price ID (49 SEK)
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 MODEL_PROMPT_TEMPLATE = """
 You are a music curator whose task is to suggest songs and artists based only on the user's full mood description.
 
@@ -169,8 +178,10 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
-    credits_remaining = db.Column(db.Integer, default=3)
-    subscription_plan = db.Column(db.String(50), default='free')  # 'free' or 'premium'
+    playlists_remaining = db.Column(db.Integer, default=3)  # Number of playlists remaining this month
+    subscription_plan = db.Column(db.String(50), default='trial')  # 'trial' or 'premium'
+    stripe_customer_id = db.Column(db.String(255), nullable=True, unique=True, index=True)
+    stripe_subscription_id = db.Column(db.String(255), nullable=True, unique=True, index=True)
     spotify_user_id = db.Column(db.Text)
     spotify_display_name = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -188,7 +199,30 @@ class User(db.Model):
     
     def has_premium_access(self) -> bool:
         """Check if user has premium access (admins always have premium)"""
-        return self.is_admin or getattr(self, 'subscription_plan', 'free') == 'premium'
+        return self.is_admin or getattr(self, 'subscription_plan', 'trial') == 'premium'
+    
+    def get_monthly_playlist_limit(self) -> int:
+        """Get monthly playlist limit based on subscription plan"""
+        if self.is_admin:
+            return float('inf')  # Admins have unlimited
+        if self.subscription_plan == 'premium':
+            return 25
+        return 3  # trial
+    
+    def get_playlists_this_month(self) -> int:
+        """Count playlists created in the current month"""
+        now = datetime.utcnow()
+        start_of_month = datetime(now.year, now.month, 1)
+        return PlaylistUsage.query.filter(
+            PlaylistUsage.user_id == self.id,
+            PlaylistUsage.created_at >= start_of_month
+        ).count()
+    
+    def can_create_playlist(self) -> bool:
+        """Check if user can create a playlist this month"""
+        if self.is_admin:
+            return True  # Admins have unlimited playlists
+        return self.get_playlists_this_month() < self.get_monthly_playlist_limit()
 
 
 class Invite(db.Model):
@@ -255,7 +289,7 @@ with app.app_context():
                     email=DEFAULT_ADMIN_EMAIL,
                     is_admin=True,
                     subscription_plan='premium',  # Admins are always premium
-                    credits_remaining=9999
+                    playlists_remaining=9999
                 )
                 admin_user.set_password(DEFAULT_ADMIN_PASSWORD)
                 db.session.add(admin_user)
@@ -558,11 +592,12 @@ def accept_invite(token):
             user = User.query.filter_by(email=invite.email).first()
             if user:
                 user.set_password(password)
-                user.credits_remaining = invite.credits
+                user.playlists_remaining = invite.credits
             else:
                 user = User(
                     email=invite.email,
-                    credits_remaining=invite.credits
+                    playlists_remaining=invite.credits,
+                    subscription_plan='trial'  # New users start with trial
                 )
                 user.set_password(password)
                 db.session.add(user)
@@ -711,16 +746,30 @@ def logout():
 def auth_status():
     """Check if user is authenticated"""
     user = g.user
-    subscription_plan = getattr(user, 'subscription_plan', 'free') if user else 'free'
+    subscription_plan = getattr(user, 'subscription_plan', 'trial') if user else 'trial'
     # Admins are always premium
     if user and user.is_admin:
         subscription_plan = 'premium'
+    
+    # Get monthly usage info
+    playlists_this_month = 0
+    monthly_limit = 3
+    if user:
+        playlists_this_month = user.get_playlists_this_month()
+        if user.is_admin:
+            monthly_limit = None  # None represents unlimited for JSON
+        else:
+            monthly_limit = user.get_monthly_playlist_limit()
+    
     return jsonify({
         'authenticated': user is not None,
         'email': user.email if user else None,
         'is_admin': bool(user.is_admin) if user else False,
-        'credits_remaining': user.credits_remaining if user else 0,
+        'playlists_remaining': user.playlists_remaining if user else 0,
         'subscription_plan': subscription_plan,
+        'playlists_this_month': playlists_this_month,
+        'monthly_limit': monthly_limit,
+        'can_create_playlist': user.can_create_playlist() if user else False,
         'spotify_connected': 'spotify_access_token' in session,
         'spotify_display_name': user.spotify_display_name if user else None
     })
@@ -741,9 +790,9 @@ def admin_list_users():
         results.append({
             'id': user.id,
             'email': user.email,
-            'credits_remaining': user.credits_remaining,
+            'playlists_remaining': user.playlists_remaining,
             'is_admin': user.is_admin,
-            'subscription_plan': getattr(user, 'subscription_plan', 'free'),
+            'subscription_plan': getattr(user, 'subscription_plan', 'trial'),
             'spotify_display_name': user.spotify_display_name,
             'created_at': user.created_at.isoformat(),
             'last_updated': user.updated_at.isoformat() if user.updated_at else None,
@@ -760,13 +809,13 @@ def admin_update_user(user_id):
         return jsonify({'error': 'User not found'}), 404
 
     data = request.get_json(force=True)
-    credits = data.get('credits_remaining')
-    if credits is not None:
+    playlists = data.get('playlists_remaining')
+    if playlists is not None:
         try:
-            credits = int(credits)
+            playlists = int(playlists)
         except (TypeError, ValueError):
-            return jsonify({'error': 'credits_remaining must be an integer'}), 400
-        user.credits_remaining = max(0, credits)
+            return jsonify({'error': 'playlists_remaining must be an integer'}), 400
+        user.playlists_remaining = max(0, playlists)
 
     if 'is_admin' in data and g.user.id != user.id:
         is_admin_value = bool(data.get('is_admin'))
@@ -776,15 +825,15 @@ def admin_update_user(user_id):
             user.subscription_plan = 'premium'
     
     if 'subscription_plan' in data:
-        subscription_plan = data.get('subscription_plan', 'free').lower()
-        if subscription_plan in ('free', 'premium'):
+        subscription_plan = data.get('subscription_plan', 'trial').lower()
+        if subscription_plan in ('trial', 'premium'):
             # Don't allow changing subscription_plan for admins (they're always premium)
             if user.is_admin:
                 user.subscription_plan = 'premium'
             else:
                 user.subscription_plan = subscription_plan
         else:
-            return jsonify({'error': 'subscription_plan must be "free" or "premium"'}), 400
+            return jsonify({'error': 'subscription_plan must be "trial" or "premium"'}), 400
 
     db.session.commit()
     return jsonify({'success': True})
@@ -860,8 +909,20 @@ def generate_playlist():
     if playlist_name_sentences > 5:
         return jsonify({'error': 'Playlist name must be 5 sentences or less. Please shorten your playlist name.'}), 400
 
-    if g.user.credits_remaining <= 0:
-        return jsonify({'error': 'You have no playlist credits remaining.'}), 403
+    # Check monthly playlist limit instead of credits
+    if not g.user.can_create_playlist():
+        playlists_this_month = g.user.get_playlists_this_month()
+        monthly_limit = g.user.get_monthly_playlist_limit()
+        if g.user.subscription_plan == 'trial':
+            return jsonify({
+                'error': f'You have reached your monthly limit of {monthly_limit} playlists. Upgrade to premium for 25 playlists per month.',
+                'upgrade_required': True
+            }), 403
+        else:
+            return jsonify({
+                'error': f'You have reached your monthly limit of {monthly_limit} playlists.',
+                'upgrade_required': False
+            }), 403
     
     try:
         access_token = get_valid_access_token()
@@ -961,10 +1022,10 @@ def generate_playlist():
             # Playlist was already created successfully
             pass
 
-        # Record usage & update credits
-        new_credits = max(0, g.user.credits_remaining - 1)
+        # Record usage & update playlists remaining
+        new_playlists = max(0, g.user.playlists_remaining - 1)
         try:
-            g.user.credits_remaining = new_credits
+            g.user.playlists_remaining = new_playlists
             usage = PlaylistUsage(
                 user_id=g.user.id,
                 spotify_playlist_id=playlist_id
@@ -984,7 +1045,7 @@ def generate_playlist():
             try:
                 # Refresh user object and retry
                 db.session.refresh(g.user)
-                g.user.credits_remaining = new_credits
+                g.user.playlists_remaining = new_playlists
                 usage = PlaylistUsage(
                     user_id=g.user.id,
                     spotify_playlist_id=playlist_id
@@ -1017,7 +1078,7 @@ def generate_playlist():
                 'diversity_score': round(diversity_score, 2),
                 'genre_counts': dict(genre_counts)
             },
-            'credits_remaining': new_credits,
+            'playlists_remaining': new_playlists,
             'requested_track_count': track_count,
             'spotify_url': f"https://open.spotify.com/playlist/{playlist_id}"
         })
@@ -1573,6 +1634,182 @@ def get_my_playlists():
     except Exception as e:
         app.logger.error(f"Error fetching playlists: {str(e)}")
         return jsonify({'error': 'Failed to fetch playlists'}), 500
+
+
+@app.route('/api/create-checkout-session', methods=['POST'])
+@login_required
+def create_checkout_session():
+    """Create a Stripe Checkout session for subscription"""
+    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+        return jsonify({'error': 'Stripe is not configured'}), 500
+    
+    if g.user.subscription_plan == 'premium':
+        return jsonify({'error': 'You already have a premium subscription'}), 400
+    
+    try:
+        # Get or create Stripe customer
+        customer_id = g.user.stripe_customer_id
+        if not customer_id:
+            customer = stripe.Customer.create(
+                email=g.user.email,
+                metadata={'user_id': g.user.id}
+            )
+            customer_id = customer.id
+            g.user.stripe_customer_id = customer_id
+            db.session.commit()
+        
+        # Create checkout session
+        checkout_session = stripe.checkout.Session.create(
+            customer=customer_id,
+            payment_method_types=['card'],
+            line_items=[{
+                'price': STRIPE_PRICE_ID,
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=APP_BASE_URL.rstrip('/') + '/subscription-success?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=APP_BASE_URL.rstrip('/') + '/subscription-canceled',
+            metadata={
+                'user_id': g.user.id
+            }
+        )
+        
+        return jsonify({
+            'checkout_url': checkout_session.url,
+            'session_id': checkout_session.id
+        })
+    except stripe.error.StripeError as e:
+        app.logger.error(f"Stripe error: {str(e)}")
+        return jsonify({'error': f'Stripe error: {str(e)}'}), 500
+    except Exception as e:
+        app.logger.error(f"Error creating checkout session: {str(e)}")
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+
+
+@app.route('/api/cancel-subscription', methods=['POST'])
+@login_required
+def cancel_subscription():
+    """Cancel the user's Stripe subscription"""
+    if not STRIPE_SECRET_KEY:
+        return jsonify({'error': 'Stripe is not configured'}), 500
+    
+    if g.user.subscription_plan != 'premium' or not g.user.stripe_subscription_id:
+        return jsonify({'error': 'No active subscription found'}), 400
+    
+    try:
+        # Cancel the subscription at period end
+        subscription = stripe.Subscription.modify(
+            g.user.stripe_subscription_id,
+            cancel_at_period_end=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Subscription will be canceled at the end of the billing period',
+            'cancel_at': subscription.cancel_at
+        })
+    except stripe.error.StripeError as e:
+        app.logger.error(f"Stripe error: {str(e)}")
+        return jsonify({'error': f'Stripe error: {str(e)}'}), 500
+    except Exception as e:
+        app.logger.error(f"Error canceling subscription: {str(e)}")
+        return jsonify({'error': 'Failed to cancel subscription'}), 500
+
+
+@app.route('/api/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    """Handle Stripe webhook events"""
+    if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
+        return jsonify({'error': 'Stripe webhook not configured'}), 500
+    
+    payload = request.get_data()
+    sig_header = request.headers.get('Stripe-Signature')
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        app.logger.error(f"Invalid payload: {str(e)}")
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError as e:
+        app.logger.error(f"Invalid signature: {str(e)}")
+        return jsonify({'error': 'Invalid signature'}), 400
+    
+    # Handle the event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        user_id = session.get('metadata', {}).get('user_id')
+        if user_id:
+            try:
+                user_id = int(user_id)
+                user = db.session.get(User, user_id)
+                if user:
+                    # Get subscription from session
+                    subscription_id = session.get('subscription')
+                    if subscription_id:
+                        user.stripe_subscription_id = subscription_id
+                        user.subscription_plan = 'premium'
+                        db.session.commit()
+                        app.logger.info(f"User {user_id} upgraded to premium")
+            except Exception as e:
+                app.logger.error(f"Error processing checkout.session.completed: {str(e)}")
+    
+    elif event['type'] == 'customer.subscription.updated':
+        subscription = event['data']['object']
+        subscription_id = subscription.get('id')
+        status = subscription.get('status')
+        
+        # Find user by subscription ID
+        user = User.query.filter_by(stripe_subscription_id=subscription_id).first()
+        if user:
+            if status in ('canceled', 'unpaid', 'past_due'):
+                user.subscription_plan = 'trial'
+                db.session.commit()
+                app.logger.info(f"User {user.id} subscription canceled or expired")
+            elif status == 'active':
+                user.subscription_plan = 'premium'
+                db.session.commit()
+                app.logger.info(f"User {user.id} subscription activated")
+    
+    elif event['type'] == 'customer.subscription.deleted':
+        subscription = event['data']['object']
+        subscription_id = subscription.get('id')
+        
+        # Find user by subscription ID
+        user = User.query.filter_by(stripe_subscription_id=subscription_id).first()
+        if user:
+            user.subscription_plan = 'trial'
+            user.stripe_subscription_id = None
+            db.session.commit()
+            app.logger.info(f"User {user.id} subscription deleted")
+    
+    return jsonify({'status': 'success'})
+
+
+@app.route('/subscription-success')
+@login_required
+def subscription_success():
+    """Handle successful subscription payment"""
+    session_id = request.args.get('session_id')
+    if session_id:
+        try:
+            checkout_session = stripe.checkout.Session.retrieve(session_id)
+            if checkout_session.payment_status == 'paid':
+                # Webhook should have already updated the user, but refresh just in case
+                db.session.refresh(g.user)
+                return render_template('index.html', user=g.user, subscription_success=True)
+        except Exception as e:
+            app.logger.error(f"Error retrieving checkout session: {str(e)}")
+    
+    return render_template('index.html', user=g.user)
+
+
+@app.route('/subscription-canceled')
+@login_required
+def subscription_canceled():
+    """Handle canceled subscription payment"""
+    return render_template('index.html', user=g.user, subscription_canceled=True)
 
 
 if __name__ == '__main__':

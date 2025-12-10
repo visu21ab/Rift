@@ -25,8 +25,12 @@
                     {{ user.spotify_display_name or user.email }}
                 </span>
                 <span class="top-banner-divider">•</span>
+                <span class="top-banner-plan" id="topBannerPlan">
+                    {{ user.subscription_plan|title }}
+                </span>
+                <span class="top-banner-divider">•</span>
                 <span class="top-banner-credits" id="topBannerCredits">
-                    {{ user.credits_remaining }} credits
+                    Loading...
                 </span>
             </div>
         </div>

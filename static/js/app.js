@@ -168,6 +168,7 @@ function updateUserHeader(data) {
     const userInfo = document.getElementById('userInfo');
     const viewPlaylistsBtn = document.getElementById('viewPlaylistsBtn');
     const topBannerIdentity = document.getElementById('topBannerIdentity');
+    const topBannerPlan = document.getElementById('topBannerPlan');
     const topBannerCredits = document.getElementById('topBannerCredits');
 
     // Update header buttons
@@ -178,8 +179,24 @@ function updateUserHeader(data) {
     
     const displayName = data.spotify_display_name || data.email || 'User';
     if (topBannerIdentity) topBannerIdentity.textContent = displayName;
-    if (typeof data.credits_remaining === 'number') {
-        if (topBannerCredits) topBannerCredits.textContent = `${data.credits_remaining} credits`;
+    
+    // Update subscription plan display
+    if (topBannerPlan) {
+        const plan = data.subscription_plan === 'premium' ? 'Premium' : 'Trial';
+        topBannerPlan.textContent = plan;
+    }
+    
+    // Update playlist usage display (x/y format)
+    if (topBannerCredits) {
+        if (data.is_admin || data.monthly_limit === null || data.monthly_limit === undefined) {
+            // Admins have unlimited playlists
+            topBannerCredits.textContent = `${data.playlists_this_month || 0} playlists (unlimited)`;
+        } else if (typeof data.playlists_this_month === 'number' && typeof data.monthly_limit === 'number') {
+            topBannerCredits.textContent = `${data.playlists_this_month}/${data.monthly_limit} playlists`;
+        } else if (typeof data.playlists_remaining === 'number') {
+            // Fallback if monthly data not available
+            topBannerCredits.textContent = `${data.playlists_remaining} playlists`;
+        }
     }
 }
 
@@ -255,12 +272,16 @@ function displayResults(data) {
         const requestedCount = typeof data.requested_track_count === 'number' ? data.requested_track_count : null;
         tracksMetric.textContent = requestedCount ? `${data.tracks_found}/${requestedCount}` : data.tracks_found;
     }
+    // Update usage display after playlist creation
     const topBannerCredits = document.getElementById('topBannerCredits');
-    const userCredits = document.getElementById('userCredits');
-    if (typeof data.credits_remaining === 'number') {
-        if (topBannerCredits) topBannerCredits.textContent = `${data.credits_remaining} credits`;
-        if (userCredits) userCredits.textContent = `${data.credits_remaining} credits`;
+    if (topBannerCredits && typeof data.playlists_this_month === 'number' && typeof data.monthly_limit === 'number') {
+        topBannerCredits.textContent = `${data.playlists_this_month}/${data.monthly_limit} playlists`;
+    } else if (topBannerCredits && typeof data.playlists_remaining === 'number') {
+        topBannerCredits.textContent = `${data.playlists_remaining} playlists`;
     }
+    
+    // Refresh auth status to update all UI elements
+    checkAuthStatus();
     
     // Update Spotify link and store playlist ID
     const spotifyLink = document.getElementById('spotifyLink');
@@ -334,6 +355,7 @@ function countSentences(text) {
     const sentences = text.trim().split(/[.!?]+(?:\s+|$)/).filter(s => s.trim());
     return sentences.length > 0 ? sentences.length : 1; // At least 1 if there's any text
 }
+
 
 
 
