@@ -56,12 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Subscribe button handler
-    const subscribeBtn = document.getElementById('subscribeBtn');
-    if (subscribeBtn) {
-        subscribeBtn.addEventListener('click', handleSubscribe);
-    }
-    
     // Upgrade to premium button handler
     const upgradeToPremiumBtn = document.getElementById('upgradeToPremiumBtn');
     if (upgradeToPremiumBtn) {
@@ -208,7 +202,6 @@ function updateUserHeader(data) {
     const topBannerIdentity = document.getElementById('topBannerIdentity');
     const topBannerPlan = document.getElementById('topBannerPlan');
     const topBannerCredits = document.getElementById('topBannerCredits');
-    const subscribeBtn = document.getElementById('subscribeBtn');
     const cancelSubscriptionBtn = document.getElementById('cancelSubscriptionBtn');
     const upgradeToPremiumBtn = document.getElementById('upgradeToPremiumBtn');
 
@@ -227,18 +220,13 @@ function updateUserHeader(data) {
         topBannerPlan.textContent = plan;
     }
     
-    // Show/hide subscribe button based on subscription plan
-    if (subscribeBtn) {
-        if (data.subscription_plan === 'trial' && !data.is_admin) {
-            subscribeBtn.style.display = 'inline-block';
-        } else {
-            subscribeBtn.style.display = 'none';
-        }
-    }
-    
     // Show/hide upgrade to premium button for trial users
     if (upgradeToPremiumBtn) {
-        if (data.subscription_plan === 'trial' && !data.is_admin) {
+        // Show for trial users (not premium and not admin)
+        // Handle 'trial', 'free', undefined, null, or any non-premium value
+        const isPremium = data.subscription_plan === 'premium';
+        const shouldShow = !isPremium && !data.is_admin;
+        if (shouldShow) {
             upgradeToPremiumBtn.style.display = 'block';
         } else {
             upgradeToPremiumBtn.style.display = 'none';
@@ -429,13 +417,13 @@ function countSentences(text) {
 
 // Handle subscription checkout
 async function handleSubscribe() {
-    const subscribeBtn = document.getElementById('subscribeBtn');
-    if (!subscribeBtn) return;
+    const upgradeBtn = document.getElementById('upgradeToPremiumBtn');
+    if (!upgradeBtn) return;
     
     // Disable button and show loading state
-    subscribeBtn.disabled = true;
-    const originalText = subscribeBtn.textContent;
-    subscribeBtn.textContent = 'Loading...';
+    upgradeBtn.disabled = true;
+    const originalText = upgradeBtn.textContent;
+    upgradeBtn.textContent = 'Loading...';
     
     try {
         const response = await fetch('/api/create-checkout-session', {
@@ -459,8 +447,8 @@ async function handleSubscribe() {
         }
     } catch (error) {
         showError(error.message);
-        subscribeBtn.disabled = false;
-        subscribeBtn.textContent = originalText;
+        upgradeBtn.disabled = false;
+        upgradeBtn.textContent = originalText;
     }
 }
 
