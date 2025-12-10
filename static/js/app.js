@@ -62,6 +62,12 @@ document.addEventListener('DOMContentLoaded', () => {
         subscribeBtn.addEventListener('click', handleSubscribe);
     }
     
+    // Upgrade to premium button handler
+    const upgradeToPremiumBtn = document.getElementById('upgradeToPremiumBtn');
+    if (upgradeToPremiumBtn) {
+        upgradeToPremiumBtn.addEventListener('click', handleSubscribe);
+    }
+    
     // Cancel subscription button handler
     const cancelSubscriptionBtn = document.getElementById('cancelSubscriptionBtn');
     if (cancelSubscriptionBtn) {
@@ -204,6 +210,7 @@ function updateUserHeader(data) {
     const topBannerCredits = document.getElementById('topBannerCredits');
     const subscribeBtn = document.getElementById('subscribeBtn');
     const cancelSubscriptionBtn = document.getElementById('cancelSubscriptionBtn');
+    const upgradeToPremiumBtn = document.getElementById('upgradeToPremiumBtn');
 
     // Update header buttons
     if (userInfo) userInfo.style.display = 'flex';
@@ -226,6 +233,15 @@ function updateUserHeader(data) {
             subscribeBtn.style.display = 'inline-block';
         } else {
             subscribeBtn.style.display = 'none';
+        }
+    }
+    
+    // Show/hide upgrade to premium button for trial users
+    if (upgradeToPremiumBtn) {
+        if (data.subscription_plan === 'trial' && !data.is_admin) {
+            upgradeToPremiumBtn.style.display = 'block';
+        } else {
+            upgradeToPremiumBtn.style.display = 'none';
         }
     }
     

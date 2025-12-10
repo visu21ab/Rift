@@ -430,6 +430,35 @@ body {
     transform: none;
 }
 
+.upgrade-to-premium-link {
+    display: block;
+    margin: 24px auto 0;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    font-family: inherit;
+    text-align: center;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    transition: color 0.2s ease, text-decoration-color 0.2s ease;
+    width: 100%;
+}
+
+.upgrade-to-premium-link:hover {
+    color: var(--text-secondary);
+    text-decoration-color: var(--text-secondary);
+}
+
+.upgrade-to-premium-link:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .cancel-subscription-link {
     display: block;
     margin: 24px auto 0;
