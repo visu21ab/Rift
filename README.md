@@ -5,8 +5,7 @@
 # Rift
 
 *A modern web application that transforms mood descriptions into curated Spotify playlists using AI*
-
-**🎬 Demo Video Available** *https://youtu.be/UY7kqxueR84*
+*https://rift-pauz.onrender.com/*
 
 </div>
 
