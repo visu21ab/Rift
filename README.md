@@ -6,7 +6,7 @@
 
 *A modern web application that transforms mood descriptions into curated Spotify playlists using AI*
 
-**🎬 Demo Video Available** *(Video file is too large for GitHub to display. View it locally at `static/videos/landing-video.mp4` or host it on YouTube/Vimeo for online viewing)*
+**🎬 Demo Video Available** *https://youtu.be/UY7kqxueR84*
 
 </div>
 
