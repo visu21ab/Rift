@@ -1689,7 +1689,7 @@ def create_checkout_session():
 @app.route('/api/cancel-subscription', methods=['POST'])
 @login_required
 def cancel_subscription():
-    """Cancel the user's Stripe subscription"""
+    """Cancel the user's Stripe subscription and immediately downgrade to trial"""
     if not STRIPE_SECRET_KEY:
         return jsonify({'error': 'Stripe is not configured'}), 500
     
@@ -1697,19 +1697,30 @@ def cancel_subscription():
         return jsonify({'error': 'No active subscription found'}), 400
     
     try:
-        # Cancel the subscription at period end
-        subscription = stripe.Subscription.modify(
-            g.user.stripe_subscription_id,
-            cancel_at_period_end=True
-        )
+        # Cancel the subscription immediately
+        stripe.Subscription.delete(g.user.stripe_subscription_id)
+        
+        # Immediately downgrade user to trial
+        g.user.subscription_plan = 'trial'
+        g.user.stripe_subscription_id = None
+        db.session.commit()
+        
+        app.logger.info(f"User {g.user.id} subscription canceled and downgraded to trial")
         
         return jsonify({
             'success': True,
-            'message': 'Subscription will be canceled at the end of the billing period',
-            'cancel_at': subscription.cancel_at
+            'message': 'Subscription canceled. You have been downgraded to trial plan (3 playlists per month).'
         })
     except stripe.error.StripeError as e:
         app.logger.error(f"Stripe error: {str(e)}")
+        # Even if Stripe fails, downgrade the user locally
+        try:
+            g.user.subscription_plan = 'trial'
+            g.user.stripe_subscription_id = None
+            db.session.commit()
+            app.logger.info(f"User {g.user.id} downgraded to trial despite Stripe error")
+        except Exception as db_error:
+            app.logger.error(f"Error updating user: {str(db_error)}")
         return jsonify({'error': f'Stripe error: {str(e)}'}), 500
     except Exception as e:
         app.logger.error(f"Error canceling subscription: {str(e)}")
