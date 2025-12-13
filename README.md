@@ -6,7 +6,7 @@
 
 *A modern web application that transforms mood descriptions into curated Spotify playlists using AI*
 
-**🎬 [Watch Demo Video](static/videos/landing-video.mp4)**
+**🎬 Demo Video Available** *(Video file is too large for GitHub to display. View it locally at `static/videos/landing-video.mp4` or host it on YouTube/Vimeo for online viewing)*
 
 </div>
 
@@ -112,5 +112,4 @@ Drift/
 MIT License
 
 ---
-
-**This is an indie project I built for myself and my firends**
+**This is solely an indie project I built for frinds and family <3**
