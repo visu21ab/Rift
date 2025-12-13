@@ -1,11 +1,8 @@
 # Rift - AI Playlist Generator
 
-<div align="center">
-
-# Rift
-
-*A modern web application that transforms mood descriptions into curated Spotify playlists using AI*
-*https://rift-pauz.onrender.com/*
+*An application that transforms mood descriptions into curated Spotify playlists using AI*
+</div>
+https://rift-pauz.onrender.com/
 
 </div>
 
