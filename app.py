@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 import secrets
 import smtplib
 from email.message import EmailMessage
+import base64
+import hashlib
 
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.pool import NullPool
@@ -113,6 +115,12 @@ CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://t-pauz.onrender.com/callback")
 SCOPES = "playlist-modify-private playlist-modify-public user-read-private"
 
+# SoundCloud API credentials
+SOUNDCLOUD_CLIENT_ID = os.getenv("SOUNDCLOUD_CLIENT_ID")
+SOUNDCLOUD_CLIENT_SECRET = os.getenv("SOUNDCLOUD_CLIENT_SECRET")
+SOUNDCLOUD_REDIRECT_URI = os.getenv("SOUNDCLOUD_REDIRECT_URI", "https://t-pauz.onrender.com/soundcloud/callback")
+SOUNDCLOUD_API_BASE = "https://api.soundcloud.com"
+
 # Request timeout for external API calls (in seconds)
 # Reduced from 15 to 10 to fail faster and prevent worker timeouts
 REQUEST_TIMEOUT = 10
@@ -136,6 +144,10 @@ adapter = HTTPAdapter(
 # Create a session for Spotify API calls
 spotify_session = requests.Session()
 spotify_session.mount("https://", adapter)
+
+# Create a session for SoundCloud API calls
+soundcloud_session = requests.Session()
+soundcloud_session.mount("https://", adapter)
 
 # Create a separate session for other API calls (OpenAI, etc.)
 api_session = requests.Session()
@@ -184,6 +196,8 @@ class User(db.Model):
     stripe_subscription_id = db.Column(db.String(255), nullable=True, unique=True, index=True)
     spotify_user_id = db.Column(db.Text)
     spotify_display_name = db.Column(db.String(255))
+    soundcloud_user_id = db.Column(db.Text)
+    soundcloud_username = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     usages = db.relationship("PlaylistUsage", backref="user", lazy=True)
@@ -262,6 +276,7 @@ class PlaylistUsage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     spotify_playlist_id = db.Column(db.String(255), nullable=True)
+    soundcloud_playlist_id = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -734,6 +749,119 @@ def callback():
     return redirect(url_for('index'))
 
 
+# SoundCloud OAuth 2.1 with PKCE support
+def generate_pkce_pair():
+    """Generate PKCE code verifier and code challenge for OAuth 2.1"""
+    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode('utf-8')).digest()
+    ).decode('utf-8').rstrip('=')
+    return code_verifier, code_challenge
+
+
+def refresh_soundcloud_token():
+    """Refresh SoundCloud access token using refresh token"""
+    refresh_token = session.get('soundcloud_refresh_token')
+    if not refresh_token:
+        session.pop('soundcloud_access_token', None)
+        return None
+    
+    token_url = f"{SOUNDCLOUD_API_BASE}/oauth2/token"
+    resp = soundcloud_session.post(token_url, data={
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": SOUNDCLOUD_CLIENT_ID,
+        "client_secret": SOUNDCLOUD_CLIENT_SECRET
+    }, timeout=REQUEST_TIMEOUT)
+    
+    if resp.status_code != 200:
+        session.pop('soundcloud_access_token', None)
+        session.pop('soundcloud_refresh_token', None)
+        return None
+    
+    tokens = resp.json()
+    session['soundcloud_access_token'] = tokens['access_token']
+    if 'refresh_token' in tokens:
+        session['soundcloud_refresh_token'] = tokens['refresh_token']
+    
+    return tokens['access_token']
+
+
+def get_valid_soundcloud_token():
+    """Get a valid SoundCloud access token, refreshing if necessary"""
+    access_token = session.get('soundcloud_access_token')
+    if not access_token:
+        return None
+    return access_token
+
+
+@app.route('/soundcloud/connect')
+@login_required
+def soundcloud_connect():
+    """Initiate SoundCloud OAuth flow with PKCE"""
+    if not SOUNDCLOUD_CLIENT_ID:
+        return redirect(url_for('index', error='soundcloud_not_configured'))
+    
+    # Generate PKCE pair
+    code_verifier, code_challenge = generate_pkce_pair()
+    session['soundcloud_code_verifier'] = code_verifier
+    
+    auth_url = f"{SOUNDCLOUD_API_BASE}/connect?" + urllib.parse.urlencode({
+        "client_id": SOUNDCLOUD_CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": SOUNDCLOUD_REDIRECT_URI,
+        "scope": "non-expiring",
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256"
+    })
+    return redirect(auth_url)
+
+
+@app.route('/soundcloud/callback')
+@login_required
+def soundcloud_callback():
+    """Handle SoundCloud OAuth callback"""
+    code = request.args.get('code')
+    if not code:
+        return redirect(url_for('index', error='access_denied'))
+    
+    code_verifier = session.get('soundcloud_code_verifier')
+    if not code_verifier:
+        return redirect(url_for('index', error='pkce_mismatch'))
+    
+    # Exchange code for tokens
+    token_url = f"{SOUNDCLOUD_API_BASE}/oauth2/token"
+    resp = soundcloud_session.post(token_url, data={
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": SOUNDCLOUD_REDIRECT_URI,
+        "client_id": SOUNDCLOUD_CLIENT_ID,
+        "client_secret": SOUNDCLOUD_CLIENT_SECRET,
+        "code_verifier": code_verifier
+    }, timeout=REQUEST_TIMEOUT)
+    
+    if resp.status_code != 200:
+        return redirect(url_for('index', error='token_exchange_failed'))
+    
+    tokens = resp.json()
+    session['soundcloud_access_token'] = tokens['access_token']
+    session['soundcloud_refresh_token'] = tokens.get('refresh_token')
+    session.pop('soundcloud_code_verifier', None)  # Clean up
+    
+    # Get user info
+    headers = {"Authorization": f"Bearer {session['soundcloud_access_token']}"}
+    r = soundcloud_session.get(f"{SOUNDCLOUD_API_BASE}/me", headers=headers, timeout=REQUEST_TIMEOUT)
+    if r.status_code == 200:
+        me = r.json()
+        session['soundcloud_user_id'] = me.get('id')
+        session['soundcloud_username'] = me.get('username')
+        g.user.soundcloud_user_id = str(me.get('id'))
+        g.user.soundcloud_username = me.get('username')
+        db.session.commit()
+    
+    return redirect(url_for('index'))
+
+
 @app.route('/logout')
 @login_required
 def logout():
@@ -771,7 +899,9 @@ def auth_status():
         'monthly_limit': monthly_limit,
         'can_create_playlist': user.can_create_playlist() if user else False,
         'spotify_connected': 'spotify_access_token' in session,
-        'spotify_display_name': user.spotify_display_name if user else None
+        'spotify_display_name': user.spotify_display_name if user else None,
+        'soundcloud_connected': 'soundcloud_access_token' in session,
+        'soundcloud_username': user.soundcloud_username if user else None
     })
 
 
@@ -881,13 +1011,14 @@ def admin_send_invite():
 
 
 @app.route('/api/generate-playlist', methods=['POST'])
-@require_spotify_auth
+@login_required
 def generate_playlist():
-    """Generate playlist from mood description"""
+    """Generate playlist from mood description - supports both Spotify and SoundCloud"""
     data = request.json
     mood = data.get('mood', '').strip()
     playlist_name = data.get('playlist_name', 'AI Generated Playlist').strip()
     track_count = data.get('track_count', 25)
+    service = data.get('service', 'spotify').lower()  # 'spotify' or 'soundcloud'
     
     try:
         track_count = int(track_count)
@@ -924,10 +1055,25 @@ def generate_playlist():
                 'upgrade_required': False
             }), 403
     
+    # Validate service and authentication
+    if service == 'spotify':
+        if 'spotify_access_token' not in session:
+            return jsonify({'error': 'Spotify account not connected. Please connect your Spotify account.'}), 401
+    elif service == 'soundcloud':
+        if 'soundcloud_access_token' not in session:
+            return jsonify({'error': 'SoundCloud account not connected. Please connect your SoundCloud account.'}), 401
+    else:
+        return jsonify({'error': f'Invalid service: {service}. Must be "spotify" or "soundcloud".'}), 400
+    
     try:
-        access_token = get_valid_access_token()
-        if not access_token:
-            return jsonify({'error': 'Not authenticated with Spotify'}), 401
+        if service == 'spotify':
+            access_token = get_valid_access_token()
+            if not access_token:
+                return jsonify({'error': 'Not authenticated with Spotify'}), 401
+        else:  # soundcloud
+            access_token = get_valid_soundcloud_token()
+            if not access_token:
+                return jsonify({'error': 'Not authenticated with SoundCloud'}), 401
         
         # Determine how many tracks to request from GPT
         gpt_track_request = track_count
@@ -942,12 +1088,12 @@ def generate_playlist():
         if not tracks_from_gpt:
             return jsonify({'error': 'No tracks returned from curator model'}), 400
         
-        # Step 2: Search Spotify for tracks and collect them
-        track_uris = []
+        # Step 2: Search for tracks based on service
+        track_ids = []  # Generic track IDs/URIs
         artist_ids = []
         found_tracks = []
         not_found = []
-        all_searched_tracks = set()  # Track URIs we've already searched to avoid duplicates
+        all_searched_tracks = set()  # Track IDs we've already searched to avoid duplicates
         
         for t in tracks_from_gpt:
             matches = None
@@ -958,11 +1104,18 @@ def generate_playlist():
                 artist_name = t.get("artist", "")
                 if not track_name or not artist_name:
                     continue
+                
                 # Get fresh token in case it was refreshed
-                access_token = session.get('spotify_access_token')
-                if not access_token:
-                    raise Exception("Spotify authentication lost. Please reconnect your account.")
-                matches = search_spotify_track(track_name, artist_name, access_token)
+                if service == 'spotify':
+                    access_token = session.get('spotify_access_token')
+                    if not access_token:
+                        raise Exception("Spotify authentication lost. Please reconnect your account.")
+                    matches = search_spotify_track(track_name, artist_name, access_token)
+                else:  # soundcloud
+                    access_token = session.get('soundcloud_access_token')
+                    if not access_token:
+                        raise Exception("SoundCloud authentication lost. Please reconnect your account.")
+                    matches = search_soundcloud_track(track_name, artist_name, access_token)
             except KeyError as e:
                 app.logger.warning(f"Unexpected track format: {t}")
                 continue
@@ -973,54 +1126,91 @@ def generate_playlist():
                     not_found.append({"artist": artist_name, "track": track_name})
                 continue
             
-            if matches and matches[0]["uri"] not in all_searched_tracks:
-                track_uri = matches[0]["uri"]
-                all_searched_tracks.add(track_uri)
-                track_uris.append(track_uri)
-                # Get artist ID from search results
-                if "artist_id" in matches[0]:
-                    artist_ids.append(matches[0]["artist_id"])
-                found_tracks.append({
-                    "artist": matches[0]["artist"],
-                    "track": matches[0]["name"],
-                    "uri": track_uri
-                })
+            if matches and len(matches) > 0:
+                match = matches[0]
+                track_id = match.get("id") or match.get("uri", "").split(":")[-1]
+                
+                if track_id and track_id not in all_searched_tracks:
+                    all_searched_tracks.add(track_id)
+                    track_ids.append(track_id)
+                    
+                    # Get artist ID from search results
+                    if "artist_id" in match:
+                        artist_ids.append(match["artist_id"])
+                    
+                    found_tracks.append({
+                        "artist": match.get("artist", ""),
+                        "track": match.get("name", ""),
+                        "uri": match.get("uri") or match.get("permalink_url", ""),
+                        "id": track_id
+                    })
             elif track_name and artist_name:
                 not_found.append({"artist": artist_name, "track": track_name})
         
-        if not track_uris:
-            return jsonify({'error': 'No tracks found on Spotify'}), 400
+        if not track_ids:
+            service_name = "Spotify" if service == "spotify" else "SoundCloud"
+            return jsonify({'error': f'No tracks found on {service_name}'}), 400
         
         # Step 3: Create playlist
-        user_id = session['spotify_user_id']
-        # Get fresh token in case it was refreshed
-        access_token = session.get('spotify_access_token')
-        playlist_id = create_spotify_playlist(
-            user_id, 
-            playlist_name, 
-            "AI-generated playlist",
-            access_token
-        )
-        
-        # Step 4: Add tracks to playlist
-        # Get fresh token in case it was refreshed
-        access_token = session.get('spotify_access_token')
-        add_tracks_to_playlist(playlist_id, track_uris, access_token)
-        
-        # Step 5: Calculate metrics using efficient batch API calls
-        # Get fresh token in case it was refreshed
-        access_token = session.get('spotify_access_token')
-        indie_pct = 0.0
-        diversity_score = 0.0
-        genre_counts = {}
-        try:
-            # Batch API calls: 1-2 calls instead of 25-50 individual calls
-            indie_pct = indie_fraction(track_uris, access_token, threshold=50)
-            diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
-        except Exception as metrics_error:
-            # If metrics fail, use defaults but don't fail the request
-            # Playlist was already created successfully
-            pass
+        if service == 'spotify':
+            user_id = session['spotify_user_id']
+            access_token = session.get('spotify_access_token')
+            playlist_id = create_spotify_playlist(
+                user_id, 
+                playlist_name, 
+                "AI-generated playlist",
+                access_token
+            )
+            
+            # Step 4: Add tracks to playlist
+            access_token = session.get('spotify_access_token')
+            add_tracks_to_playlist(playlist_id, track_ids, access_token)
+            
+            # Step 5: Calculate metrics using efficient batch API calls
+            access_token = session.get('spotify_access_token')
+            indie_pct = 0.0
+            diversity_score = 0.0
+            genre_counts = {}
+            try:
+                # Batch API calls: 1-2 calls instead of 25-50 individual calls
+                indie_pct = indie_fraction(track_ids, access_token, threshold=50)
+                diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
+            except Exception as metrics_error:
+                # If metrics fail, use defaults but don't fail the request
+                pass
+            
+            playlist_url = f"https://open.spotify.com/playlist/{playlist_id}"
+        else:  # soundcloud
+            user_id = session['soundcloud_user_id']
+            access_token = session.get('soundcloud_access_token')
+            playlist_id = create_soundcloud_playlist(
+                user_id,
+                playlist_name,
+                "AI-generated playlist",
+                access_token
+            )
+            
+            # Step 4: Add tracks to playlist
+            access_token = session.get('soundcloud_access_token')
+            add_tracks_to_soundcloud_playlist(playlist_id, track_ids, access_token)
+            
+            # SoundCloud doesn't have the same metrics API, so use defaults
+            indie_pct = 0.0
+            diversity_score = 0.0
+            genre_counts = {}
+            
+            # Get playlist URL from SoundCloud
+            try:
+                url = f"{SOUNDCLOUD_API_BASE}/playlists/{playlist_id}"
+                headers = {"Authorization": f"Bearer {access_token}"}
+                r = soundcloud_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                if r.status_code == 200:
+                    playlist_data = r.json()
+                    playlist_url = playlist_data.get('permalink_url', f"https://soundcloud.com/playlist/{playlist_id}")
+                else:
+                    playlist_url = f"https://soundcloud.com/playlist/{playlist_id}"
+            except:
+                playlist_url = f"https://soundcloud.com/playlist/{playlist_id}"
 
         # Record usage & update playlists remaining
         new_playlists = max(0, g.user.playlists_remaining - 1)
@@ -1028,7 +1218,8 @@ def generate_playlist():
             g.user.playlists_remaining = new_playlists
             usage = PlaylistUsage(
                 user_id=g.user.id,
-                spotify_playlist_id=playlist_id
+                spotify_playlist_id=playlist_id if service == 'spotify' else None,
+                soundcloud_playlist_id=playlist_id if service == 'soundcloud' else None
             )
             db.session.add(usage)
             
@@ -1048,7 +1239,8 @@ def generate_playlist():
                 g.user.playlists_remaining = new_playlists
                 usage = PlaylistUsage(
                     user_id=g.user.id,
-                    spotify_playlist_id=playlist_id
+                    spotify_playlist_id=playlist_id if service == 'spotify' else None,
+                    soundcloud_playlist_id=playlist_id if service == 'soundcloud' else None
                 )
                 db.session.add(usage)
                 
@@ -1061,14 +1253,13 @@ def generate_playlist():
                 db.session.commit()
             except Exception:
                 # If retry also fails, log but don't fail the request
-                # The playlist was already created successfully
-                # Use the calculated credits value even if DB commit failed
                 pass
         
         return jsonify({
             'success': True,
             'playlist_id': playlist_id,
             'playlist_name': playlist_name,
+            'service': service,
             'tracks_found': len(found_tracks),
             'tracks_not_found': len(not_found),
             'tracks': found_tracks,
@@ -1080,7 +1271,7 @@ def generate_playlist():
             },
             'playlists_remaining': new_playlists,
             'requested_track_count': track_count,
-            'spotify_url': f"https://open.spotify.com/playlist/{playlist_id}"
+            'playlist_url': playlist_url
         })
         
     except Exception as e:
@@ -1090,10 +1281,11 @@ def generate_playlist():
         app.logger.error(traceback.format_exc())
         # Return user-friendly error message
         error_message = str(e)
+        service_name = "Spotify" if service == "spotify" else "SoundCloud"
         if "403" in error_message or "Forbidden" in error_message:
-            error_message = "Spotify access denied. Please click 'Connect Spotify' to reconnect your account."
+            error_message = f"{service_name} access denied. Please click 'Connect {service_name}' to reconnect your account."
         elif "401" in error_message or "Unauthorized" in error_message:
-            error_message = "Spotify authentication expired. Please reconnect your account."
+            error_message = f"{service_name} authentication expired. Please reconnect your account."
         elif "timeout" in error_message.lower():
             error_message = "Request timed out. Please try again."
         return jsonify({'error': error_message}), 500
@@ -1584,6 +1776,198 @@ def get_spotify_recommendations(seed_tracks, access_token, limit=20, min_danceab
         })
     
     return recommendations
+
+
+# SoundCloud API functions
+def search_soundcloud_track(track_name, artist_name, access_token):
+    """Search SoundCloud for a track by name and artist."""
+    # SoundCloud search query format
+    q = f"{track_name} {artist_name}"
+    url = f"{SOUNDCLOUD_API_BASE}/tracks"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {
+        "q": q,
+        "limit": 10,
+        "linked_partitioning": 1
+    }
+    
+    try:
+        r = soundcloud_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("SoundCloud API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+    
+    # If token expired (401), refresh and retry
+    if r.status_code == 401:
+        new_token = refresh_soundcloud_token()
+        if new_token:
+            headers = {"Authorization": f"Bearer {new_token}"}
+            try:
+                r = soundcloud_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("SoundCloud API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+        else:
+            raise Exception("SoundCloud authentication expired. Please reconnect your account.")
+    
+    r.raise_for_status()
+    
+    # SoundCloud returns a collection object with tracks array
+    data = r.json()
+    if isinstance(data, dict) and 'collection' in data:
+        items = data['collection']
+    elif isinstance(data, list):
+        items = data
+    else:
+        items = []
+    
+    results = []
+    for item in items[:3]:  # Limit to top 3 results
+        # Extract artist name - could be from user.username or metadata_artist
+        artist = item.get('metadata_artist') or item.get('user', {}).get('username', 'Unknown')
+        track_title = item.get('title', '')
+        
+        # Basic matching - check if artist and track name are in the result
+        if artist_name.lower() in artist.lower() and track_name.lower() in track_title.lower():
+            results.append({
+                "name": track_title,
+                "artist": artist,
+                "artist_id": item.get('user', {}).get('id'),
+                "id": item.get('id'),
+                "uri": item.get('permalink_url', ''),
+                "permalink_url": item.get('permalink_url', ''),
+                "artwork_url": item.get('artwork_url'),
+                "genre": item.get('genre'),
+                "duration": item.get('duration'),
+                "description": item.get('description'),
+                "bpm": item.get('bpm'),  # Optional: beats per minute (often null)
+                "key_signature": item.get('key_signature')  # Optional: musical key
+            })
+    
+    return results
+
+
+def create_soundcloud_playlist(user_id, name, description, access_token):
+    """Create a playlist (set) on SoundCloud."""
+    url = f"{SOUNDCLOUD_API_BASE}/playlists"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "playlist": {
+            "title": name,
+            "description": description,
+            "sharing": "private"  # Private playlist
+        }
+    }
+    
+    try:
+        r = soundcloud_session.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("SoundCloud API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+    
+    # If token expired, refresh and retry
+    if r.status_code == 401:
+        new_token = refresh_soundcloud_token()
+        if new_token:
+            headers = {"Authorization": f"Bearer {new_token}", "Content-Type": "application/json"}
+            try:
+                r = soundcloud_session.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("SoundCloud API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+        else:
+            r.raise_for_status()
+    
+    r.raise_for_status()
+    playlist_data = r.json()
+    return playlist_data.get('id') or playlist_data.get('playlist', {}).get('id')
+
+
+def add_tracks_to_soundcloud_playlist(playlist_id, track_ids, access_token):
+    """Add tracks to a SoundCloud playlist."""
+    url = f"{SOUNDCLOUD_API_BASE}/playlists/{playlist_id}"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    # SoundCloud requires tracks array with track IDs
+    body = {
+        "playlist": {
+            "tracks": [{"id": track_id} for track_id in track_ids]
+        }
+    }
+    
+    try:
+        r = soundcloud_session.put(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("SoundCloud API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+    
+    # If token expired, refresh and retry
+    if r.status_code == 401:
+        new_token = refresh_soundcloud_token()
+        if new_token:
+            headers = {"Authorization": f"Bearer {new_token}", "Content-Type": "application/json"}
+            try:
+                r = soundcloud_session.put(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("SoundCloud API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+        else:
+            r.raise_for_status()
+    
+    r.raise_for_status()
+
+
+def get_soundcloud_track_metadata(track_id, access_token):
+    """Fetch track metadata from SoundCloud."""
+    url = f"{SOUNDCLOUD_API_BASE}/tracks/{track_id}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    try:
+        r = soundcloud_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("SoundCloud API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+    
+    if r.status_code == 401:
+        new_token = refresh_soundcloud_token()
+        if new_token:
+            headers = {"Authorization": f"Bearer {new_token}"}
+            try:
+                r = soundcloud_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("SoundCloud API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+        else:
+            r.raise_for_status()
+    
+    r.raise_for_status()
+    return r.json()
+
+
+def require_soundcloud_auth(f):
+    """Decorator to require SoundCloud authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if g.user is None:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if 'soundcloud_access_token' not in session:
+            return jsonify({'error': 'SoundCloud account not connected'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 @app.route('/api/my-playlists', methods=['GET'])
