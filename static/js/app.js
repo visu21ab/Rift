@@ -1,5 +1,135 @@
+// ============================================
+// GSAP ScrollTrigger Animations
+// ============================================
+function initGSAPAnimations() {
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+
+    gsap.registerPlugin(ScrollTrigger);
+
+    // Set default ease
+    gsap.defaults({ ease: 'power3.out' });
+
+    // Header fade in on load
+    gsap.from('.header', {
+        opacity: 0,
+        y: -20,
+        duration: 0.8,
+        delay: 0.2
+    });
+
+    // Step sections: fade in + slide up with ScrollTrigger
+    document.querySelectorAll('.step-section').forEach((section, i) => {
+        gsap.from(section, {
+            scrollTrigger: {
+                trigger: section,
+                start: 'top 85%',
+                toggleActions: 'play none none none'
+            },
+            opacity: 0,
+            y: 50,
+            duration: 0.8,
+            delay: i * 0.1
+        });
+    });
+
+    // About section
+    const aboutSection = document.querySelector('.about-section');
+    if (aboutSection) {
+        gsap.from(aboutSection, {
+            scrollTrigger: {
+                trigger: aboutSection,
+                start: 'top 85%',
+                toggleActions: 'play none none none'
+            },
+            opacity: 0,
+            y: 40,
+            duration: 0.8
+        });
+    }
+
+    // Connect buttons stagger
+    const connectButtons = document.querySelectorAll('.connect-buttons .btn-primary');
+    if (connectButtons.length) {
+        gsap.fromTo(connectButtons, {
+            opacity: 0,
+            y: 20,
+            scale: 0.97
+        }, {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            duration: 0.6,
+            stagger: 0.12,
+            delay: 0.5
+        });
+    }
+
+    // Button hover scale effects
+    document.querySelectorAll('.btn-primary').forEach(btn => {
+        btn.addEventListener('mouseenter', () => {
+            gsap.to(btn, { scale: 1.02, duration: 0.2, ease: 'power2.out' });
+        });
+        btn.addEventListener('mouseleave', () => {
+            gsap.to(btn, { scale: 1, duration: 0.3, ease: 'power2.out' });
+        });
+    });
+}
+
+// Animate track items when results appear
+function animateTrackItems() {
+    if (typeof gsap === 'undefined') return;
+
+    const trackItems = document.querySelectorAll('.track-item');
+    if (trackItems.length) {
+        gsap.from(trackItems, {
+            opacity: 0,
+            y: 16,
+            duration: 0.4,
+            stagger: 0.04,
+            ease: 'power2.out',
+            delay: 0.2
+        });
+    }
+}
+
+// Animate metrics row
+function animateMetrics() {
+    if (typeof gsap === 'undefined') return;
+
+    const metricItems = document.querySelectorAll('.metric-item');
+    if (metricItems.length) {
+        gsap.from(metricItems, {
+            opacity: 0,
+            y: 20,
+            scale: 0.95,
+            duration: 0.5,
+            stagger: 0.1,
+            ease: 'power2.out'
+        });
+    }
+}
+
+// Animate playlists list items
+function animatePlaylistItems() {
+    if (typeof gsap === 'undefined') return;
+
+    const items = document.querySelectorAll('.playlist-item');
+    if (items.length) {
+        gsap.from(items, {
+            opacity: 0,
+            y: 16,
+            duration: 0.4,
+            stagger: 0.05,
+            ease: 'power2.out'
+        });
+    }
+}
+
 // Check authentication status on load
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize GSAP animations
+    initGSAPAnimations();
+
     checkAuthStatus();
     
     // Check for subscription success/cancel messages
@@ -17,7 +147,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Setup event listeners after DOM is ready
-    const loginBtnStep = document.getElementById('loginBtnStep');
     const logoutBtn = document.getElementById('logoutBtn');
     const viewPlaylistsBtn = document.getElementById('viewPlaylistsBtn');
     const playlistForm = document.getElementById('playlistForm');
@@ -41,12 +170,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    const connectToSpotify = () => {
-            window.location.href = '/spotify/connect';
-    };
-    
-    if (loginBtnStep) {
-        loginBtnStep.addEventListener('click', connectToSpotify);
+    const connectSpotifyBtn = document.getElementById('connectSpotifyBtn');
+    const connectSoundCloudBtn = document.getElementById('connectSoundCloudBtn');
+
+    if (connectSpotifyBtn) {
+        connectSpotifyBtn.addEventListener('click', () => {
+            if (!connectSpotifyBtn.classList.contains('btn-connected')) {
+                window.location.href = '/spotify/connect';
+            }
+        });
+    }
+    if (connectSoundCloudBtn) {
+        connectSoundCloudBtn.addEventListener('click', () => {
+            if (!connectSoundCloudBtn.classList.contains('btn-connected')) {
+                window.location.href = '/soundcloud/connect';
+            }
+        });
     }
     
     if (logoutBtn) {
@@ -98,11 +237,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
+            // Determine selected provider
+            const providerRadio = document.querySelector('input[name="provider"]:checked');
+            const provider = providerRadio ? providerRadio.value : null;
+
             const requestBody = {
                 mood: mood,
                 playlist_name: playlistName,
                 track_count: trackCount
             };
+            if (provider) {
+                requestBody.provider = provider;
+            }
             
             // Hide previous results and errors
             document.getElementById('resultsSection').style.display = 'none';
@@ -179,20 +325,79 @@ async function checkAuthStatus() {
     }
 }
 
-// Update step visibility based on Spotify connection
+// Update step visibility based on music service connections
 function updateStepVisibility(data) {
-    const loginBtnStep = document.getElementById('loginBtnStep');
-    
-    if (loginBtnStep) {
-        if (data.spotify_connected) {
-            // Mark button as connected (different color)
-            loginBtnStep.classList.add('btn-connected');
-            loginBtnStep.textContent = 'Connected to Spotify';
-        } else {
-            // Mark button as not connected
-            loginBtnStep.classList.remove('btn-connected');
-            loginBtnStep.textContent = 'Connect Spotify';
+    const connectSpotifyBtn = document.getElementById('connectSpotifyBtn');
+    const connectSoundCloudBtn = document.getElementById('connectSoundCloudBtn');
+
+    updateConnectButton(connectSpotifyBtn, data.spotify_connected, 'Spotify', '/spotify/disconnect');
+    updateConnectButton(connectSoundCloudBtn, data.soundcloud_connected, 'SoundCloud', '/soundcloud/disconnect');
+
+    // Update service selector
+    updateServiceSelector(data.spotify_connected, data.soundcloud_connected);
+}
+
+function updateConnectButton(btn, isConnected, serviceName, disconnectUrl) {
+    if (!btn) return;
+
+    // Remove any existing disconnect link
+    const existingDisconnect = btn.parentElement.querySelector('.btn-disconnect[data-service="' + serviceName + '"]');
+    if (existingDisconnect) existingDisconnect.remove();
+
+    if (isConnected) {
+        btn.classList.add('btn-connected');
+        btn.innerHTML = '<span class="btn-checkmark">\u2713</span> Connected to ' + serviceName;
+        // Add disconnect link below
+        const disconnectLink = document.createElement('button');
+        disconnectLink.className = 'btn-disconnect';
+        disconnectLink.setAttribute('data-service', serviceName);
+        disconnectLink.textContent = 'Disconnect';
+        disconnectLink.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.location.href = disconnectUrl;
+        });
+        btn.parentElement.insertBefore(disconnectLink, btn.nextSibling);
+    } else {
+        btn.classList.remove('btn-connected');
+        btn.textContent = 'Connect ' + serviceName;
+    }
+}
+
+function updateServiceSelector(spotifyConnected, soundcloudConnected) {
+    const selector = document.getElementById('serviceSelector');
+    const spotifyRadio = document.getElementById('providerSpotify');
+    const soundcloudRadio = document.getElementById('providerSoundCloud');
+    if (!selector || !spotifyRadio || !soundcloudRadio) return;
+
+    const spotifyLabel = selector.querySelector('label[for="providerSpotify"]');
+    const soundcloudLabel = selector.querySelector('label[for="providerSoundCloud"]');
+
+    if (!spotifyConnected && !soundcloudConnected) {
+        selector.style.display = 'none';
+        return;
+    }
+
+    // Show/hide options based on connection status
+    spotifyRadio.style.display = spotifyConnected ? 'none' : 'none';
+    if (spotifyLabel) spotifyLabel.style.display = spotifyConnected ? 'inline-flex' : 'none';
+    soundcloudRadio.style.display = soundcloudConnected ? 'none' : 'none';
+    if (soundcloudLabel) soundcloudLabel.style.display = soundcloudConnected ? 'inline-flex' : 'none';
+
+    // Auto-select logic
+    if (spotifyConnected && soundcloudConnected) {
+        selector.style.display = 'flex';
+        if (!spotifyRadio.checked && !soundcloudRadio.checked) {
+            spotifyRadio.checked = true;
         }
+    } else if (spotifyConnected) {
+        // Only one service — auto-select and hide selector
+        spotifyRadio.checked = true;
+        soundcloudRadio.checked = false;
+        selector.style.display = 'none';
+    } else {
+        soundcloudRadio.checked = true;
+        spotifyRadio.checked = false;
+        selector.style.display = 'none';
     }
 }
 
@@ -211,7 +416,7 @@ function updateUserHeader(data) {
         viewPlaylistsBtn.style.display = 'inline-block';
     }
     
-    const displayName = data.spotify_display_name || data.email || 'User';
+    const displayName = data.spotify_display_name || data.soundcloud_display_name || data.email || 'User';
     if (topBannerIdentity) topBannerIdentity.textContent = displayName;
     
     // Update subscription plan display
@@ -291,7 +496,7 @@ function displayPlaylists(playlists) {
         playlistItem.className = 'playlist-item';
         playlistItem.innerHTML = `
             <div class="playlist-info">
-                <a href="${playlist.spotify_url}" target="_blank" class="playlist-name-link">
+                <a href="${playlist.playlist_url || playlist.spotify_url || playlist.soundcloud_url}" target="_blank" class="playlist-name-link">
                     ${escapeHtml(playlist.name || 'Untitled Playlist')}
                 </a>
                 <div class="playlist-date">${new Date(playlist.created_at).toLocaleDateString()}</div>
@@ -299,6 +504,9 @@ function displayPlaylists(playlists) {
         `;
         playlistsList.appendChild(playlistItem);
     });
+
+    // Trigger GSAP stagger animation for playlist items
+    animatePlaylistItems();
 }
 
 // Display results
@@ -339,13 +547,18 @@ function displayResults(data) {
     // Refresh auth status to update all UI elements
     checkAuthStatus();
     
-    // Update Spotify link and store playlist ID
-    const spotifyLink = document.getElementById('spotifyLink');
-    if (spotifyLink) {
-        spotifyLink.href = data.spotify_url;
-        // Store playlist ID in data attribute for image upload
+    // Update playlist link (works for both Spotify and SoundCloud)
+    const playlistLink = document.getElementById('playlistLink');
+    if (playlistLink) {
+        const url = data.playlist_url || data.spotify_url || data.soundcloud_url;
+        playlistLink.href = url;
+        if (data.spotify_url) {
+            playlistLink.textContent = 'Open in Spotify';
+        } else if (data.soundcloud_url) {
+            playlistLink.textContent = 'Open in SoundCloud';
+        }
         if (data.playlist_id) {
-            spotifyLink.setAttribute('data-playlist-id', data.playlist_id);
+            playlistLink.setAttribute('data-playlist-id', data.playlist_id);
         }
     }
     
@@ -374,10 +587,13 @@ function displayResults(data) {
     if (resultsSection) {
         resultsSection.style.display = 'block';
         // Scroll to results
-        resultsSection.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'start' 
+        resultsSection.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
         });
+        // Trigger GSAP animations for results
+        animateMetrics();
+        animateTrackItems();
     }
 }
 

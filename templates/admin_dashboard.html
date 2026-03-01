@@ -254,6 +254,7 @@
                         <tr>
                             <th>Email</th>
                             <th>Spotify</th>
+                            <th>SoundCloud</th>
                             <th>Usage</th>
                             <th>Role</th>
                             <th>Updated</th>
@@ -262,7 +263,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                                <td colspan="6" class="empty-state" id="usersTablePlaceholder">Loading users…</td>
+                                <td colspan="7" class="empty-state" id="usersTablePlaceholder">Loading users…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -324,7 +325,7 @@
             if (!users.length) {
                 const row = document.createElement('tr');
                 const cell = document.createElement('td');
-                cell.colSpan = 6;
+                cell.colSpan = 7;
                 cell.className = 'empty-state';
                 cell.textContent = 'No users yet.';
                 row.appendChild(cell);
@@ -342,6 +343,10 @@
                 const spotifyCell = document.createElement('td');
                 spotifyCell.textContent = user.spotify_display_name || '—';
                 row.appendChild(spotifyCell);
+
+                const soundcloudCell = document.createElement('td');
+                soundcloudCell.textContent = user.soundcloud_display_name || '—';
+                row.appendChild(soundcloudCell);
 
                 const usageCell = document.createElement('td');
                 usageCell.textContent = `${user.usage_count} playlists`;

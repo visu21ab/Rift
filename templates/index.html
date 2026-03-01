@@ -7,12 +7,11 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Libre+Franklin:wght@700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script>
-        // Initialize theme immediately to prevent FOUC
+        // Force dark theme
         (function() {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
+            document.documentElement.setAttribute('data-theme', 'dark');
         })();
     </script>
 </head>
@@ -22,7 +21,7 @@
             <div class="top-banner-content">
             <div class="top-banner-user">
                 <span class="top-banner-name" id="topBannerIdentity">
-                    {{ user.spotify_display_name or user.email }}
+                    {{ user.spotify_display_name or user.soundcloud_display_name or user.email }}
                 </span>
                 <span class="top-banner-divider">•</span>
                 <span class="top-banner-plan" id="topBannerPlan">
@@ -43,7 +42,7 @@
         <!-- Header -->
         <header class="header">
             <div class="header-inner">
-                <a href="{{ url_for('index') }}" class="logo" style="text-decoration: none; color: inherit;">Rift</a>
+                <a href="{{ url_for('index') }}" class="logo">Rift</a>
                 <div class="header-actions" id="authSection">
                     <div class="user-info" id="userInfo" style="display: none;">
                         <button class="btn-link" id="viewPlaylistsBtn">My Playlists</button>
@@ -62,11 +61,16 @@
             <section class="step-section" id="stepConnect">
                 <div class="step-indicator">
                     <div class="step-content">
-                        <h2 class="step-title">Connect Your Spotify</h2>
-                        <p class="step-description">Link your account to create playlists directly in Spotify</p>
-                        <button class="btn-primary btn-large" id="loginBtnStep">
-                            Connect Spotify
-                        </button>
+                        <h2 class="step-title">Connect a Music Service</h2>
+                        <p class="step-description">Link your account to create playlists</p>
+                        <div class="connect-buttons">
+                            <button class="btn-primary btn-large btn-spotify" id="connectSpotifyBtn">
+                                Connect Spotify
+                            </button>
+                            <button class="btn-primary btn-large btn-soundcloud" id="connectSoundCloudBtn">
+                                Connect SoundCloud
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -85,11 +89,17 @@
                             </span>
                         </div>
                         <form id="playlistForm" class="playlist-form">
+                            <div class="service-selector" id="serviceSelector" style="display: none;">
+                                <input type="radio" name="provider" value="spotify" id="providerSpotify" class="service-option service-spotify">
+                                <label for="providerSpotify" class="service-option-label">Spotify</label>
+                                <input type="radio" name="provider" value="soundcloud" id="providerSoundCloud" class="service-option service-soundcloud">
+                                <label for="providerSoundCloud" class="service-option-label">SoundCloud</label>
+                            </div>
                             <div class="input-group">
-                                <textarea 
-                                    id="mood" 
-                                    name="mood" 
-                                    class="input-textarea" 
+                                <textarea
+                                    id="mood"
+                                    name="mood"
+                                    class="input-textarea"
                                     placeholder="e.g., Late night New York jazz and R&B"
                                     rows="4"
                                     required
@@ -145,8 +155,8 @@
                             <h2 class="step-title">Playlist Created</h2>
                             <p class="step-description">Your AI-generated playlist is ready</p>
                             
-                            <a href="#" id="spotifyLink" target="_blank" class="btn-primary btn-large btn-spotify">
-                                Open in Spotify
+                            <a href="#" id="playlistLink" target="_blank" class="btn-primary btn-large">
+                                Open Playlist
                             </a>
 
                             <div class="metrics-row">
@@ -187,7 +197,7 @@
             <section class="about-section" id="aboutSection">
                 <div class="about-content">
                     <p class="about-text">
-                        Rift translates moods into playlists with a refined editorial touch. A minimal workflow for richly textured sound. The generation doesn't factor in Spotify popularity scores or your listening history, which opens up music you might never discover otherwise.
+                        Rift translates moods into playlists with a refined editorial touch. A minimal workflow for richly textured sound. The generation doesn't factor in popularity metrics or your listening history, which opens up music you might never discover otherwise.
                     </p>
                     <button id="upgradeToPremiumBtn" class="upgrade-to-premium-link" style="display: none;">
                         Upgrade to Premium
@@ -208,6 +218,8 @@
         </main>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/ScrollTrigger.min.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

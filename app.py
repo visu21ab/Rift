@@ -4,6 +4,8 @@ import requests
 import json
 import os
 import urllib.parse
+import hashlib
+import base64
 from dotenv import load_dotenv
 from openai import OpenAI
 from collections import Counter
@@ -110,8 +112,13 @@ db = SQLAlchemy(app)
 # Spotify API credentials
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://t-pauz.onrender.com/callback")
+REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "https://rift-pauz.onrender.com/callback")
 SCOPES = "playlist-modify-private playlist-modify-public user-read-private"
+
+# SoundCloud API credentials
+SOUNDCLOUD_CLIENT_ID = os.getenv("SOUNDCLOUD_CLIENT_ID")
+SOUNDCLOUD_CLIENT_SECRET = os.getenv("SOUNDCLOUD_CLIENT_SECRET")
+SOUNDCLOUD_REDIRECT_URI = os.getenv("SOUNDCLOUD_REDIRECT_URI", "https://rift-pauz.onrender.com/callback")
 
 # Request timeout for external API calls (in seconds)
 # Reduced from 15 to 10 to fail faster and prevent worker timeouts
@@ -136,6 +143,18 @@ adapter = HTTPAdapter(
 # Create a session for Spotify API calls
 spotify_session = requests.Session()
 spotify_session.mount("https://", adapter)
+
+# Create a session for SoundCloud API calls
+sc_session = requests.Session()
+sc_session.mount("https://", adapter)
+
+
+def generate_pkce_pair():
+    """Generate PKCE code_verifier and code_challenge for OAuth 2.1."""
+    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b'=').decode('ascii')
+    digest = hashlib.sha256(code_verifier.encode('ascii')).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b'=').decode('ascii')
+    return code_verifier, code_challenge
 
 # Create a separate session for other API calls (OpenAI, etc.)
 api_session = requests.Session()
@@ -184,6 +203,8 @@ class User(db.Model):
     stripe_subscription_id = db.Column(db.String(255), nullable=True, unique=True, index=True)
     spotify_user_id = db.Column(db.Text)
     spotify_display_name = db.Column(db.String(255))
+    soundcloud_user_urn = db.Column(db.Text)
+    soundcloud_display_name = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     usages = db.relationship("PlaylistUsage", backref="user", lazy=True)
@@ -262,6 +283,7 @@ class PlaylistUsage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     spotify_playlist_id = db.Column(db.String(255), nullable=True)
+    soundcloud_playlist_id = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -276,10 +298,27 @@ with app.app_context():
     try:
         db.create_all()
     except Exception as e:
-        # Log the error but don't fail startup - tables might already exist
         app.logger.warning(f"Database initialization warning: {str(e)}")
-        # Try to continue - this might be a transaction pooler limitation
         pass
+
+    # Add new SoundCloud columns if they don't exist yet (migration)
+    try:
+        with db.engine.connect() as conn:
+            for col, col_type in [
+                ('soundcloud_user_urn', 'TEXT'),
+                ('soundcloud_display_name', 'VARCHAR(255)'),
+            ]:
+                try:
+                    conn.execute(db.text(f'ALTER TABLE "user" ADD COLUMN {col} {col_type}'))
+                except Exception:
+                    conn.rollback()
+            try:
+                conn.execute(db.text('ALTER TABLE playlist_usage ADD COLUMN soundcloud_playlist_id VARCHAR(255)'))
+            except Exception:
+                conn.rollback()
+            conn.commit()
+    except Exception as e:
+        app.logger.warning(f"Column migration warning: {str(e)}")
     
     if DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD:
         try:
@@ -616,10 +655,9 @@ def refresh_spotify_token():
     """Refresh Spotify access token using refresh token"""
     refresh_token = session.get('spotify_refresh_token')
     if not refresh_token:
-        # Clear invalid session
         session.pop('spotify_access_token', None)
         return None
-    
+
     token_url = "https://accounts.spotify.com/api/token"
     resp = spotify_session.post(token_url, data={
         "grant_type": "refresh_token",
@@ -627,41 +665,72 @@ def refresh_spotify_token():
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
     }, timeout=REQUEST_TIMEOUT)
-    
+
     if resp.status_code != 200:
-        # Refresh token is invalid, clear session
         session.pop('spotify_access_token', None)
         session.pop('spotify_refresh_token', None)
         return None
-    
+
     tokens = resp.json()
     session['spotify_access_token'] = tokens['access_token']
-    # Spotify may return a new refresh token, or keep the old one
     if 'refresh_token' in tokens:
         session['spotify_refresh_token'] = tokens['refresh_token']
-    
+
     return tokens['access_token']
 
 
-def get_valid_access_token():
-    """Get a valid access token, refreshing if necessary"""
+def get_valid_spotify_token():
+    """Get a valid Spotify access token"""
     access_token = session.get('spotify_access_token')
     if not access_token:
         return None
-    
-    # Try to use the token - if it fails with 401, refresh it
-    # For now, we'll refresh on 401 errors in the API calls
     return access_token
 
 
-def require_spotify_auth(f):
-    """Decorator to require Spotify authentication"""
+def refresh_soundcloud_token():
+    """Refresh SoundCloud access token using refresh token"""
+    refresh_token = session.get('soundcloud_refresh_token')
+    if not refresh_token:
+        session.pop('soundcloud_access_token', None)
+        return None
+
+    token_url = "https://secure.soundcloud.com/oauth/token"
+    resp = sc_session.post(token_url, data={
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": SOUNDCLOUD_CLIENT_ID,
+        "client_secret": SOUNDCLOUD_CLIENT_SECRET
+    }, timeout=REQUEST_TIMEOUT)
+
+    if resp.status_code != 200:
+        session.pop('soundcloud_access_token', None)
+        session.pop('soundcloud_refresh_token', None)
+        return None
+
+    tokens = resp.json()
+    session['soundcloud_access_token'] = tokens['access_token']
+    if 'refresh_token' in tokens:
+        session['soundcloud_refresh_token'] = tokens['refresh_token']
+
+    return tokens['access_token']
+
+
+def get_valid_soundcloud_token():
+    """Get a valid SoundCloud access token"""
+    access_token = session.get('soundcloud_access_token')
+    if not access_token:
+        return None
+    return access_token
+
+
+def require_any_music_auth(f):
+    """Decorator to require either Spotify or SoundCloud authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.user is None:
             return jsonify({'error': 'Not authenticated'}), 401
-        if 'spotify_access_token' not in session:
-            return jsonify({'error': 'Spotify account not connected'}), 401
+        if 'spotify_access_token' not in session and 'soundcloud_access_token' not in session:
+            return jsonify({'error': 'No music service connected. Please connect Spotify or SoundCloud.'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
@@ -695,15 +764,45 @@ def spotify_connect():
     return redirect(auth_url)
 
 
+@app.route('/soundcloud/connect')
+@login_required
+def soundcloud_connect():
+    """Initiate SoundCloud OAuth 2.1 flow with PKCE"""
+    code_verifier, code_challenge = generate_pkce_pair()
+    session['soundcloud_code_verifier'] = code_verifier
+
+    # Generate state parameter for CSRF protection
+    state = secrets.token_urlsafe(32)
+    session['soundcloud_oauth_state'] = state
+
+    auth_url = "https://secure.soundcloud.com/authorize?" + urllib.parse.urlencode({
+        "client_id": SOUNDCLOUD_CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": SOUNDCLOUD_REDIRECT_URI,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        "state": state
+    })
+    return redirect(auth_url)
+
+
 @app.route('/callback')
 @login_required
 def callback():
-    """Handle Spotify OAuth callback"""
+    """Handle OAuth callback for Spotify or SoundCloud (auto-detect)"""
     code = request.args.get('code')
     if not code:
         return redirect(url_for('index', error='access_denied'))
-    
-    # Exchange code for tokens
+
+    # Detect provider: if we stored a PKCE verifier, it's SoundCloud
+    if 'soundcloud_code_verifier' in session:
+        return _handle_soundcloud_callback(code)
+    else:
+        return _handle_spotify_callback(code)
+
+
+def _handle_spotify_callback(code):
+    """Handle Spotify OAuth callback"""
     token_url = "https://accounts.spotify.com/api/token"
     resp = spotify_session.post(token_url, data={
         "grant_type": "authorization_code",
@@ -712,14 +811,14 @@ def callback():
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
     }, timeout=REQUEST_TIMEOUT)
-    
+
     if resp.status_code != 200:
         return redirect(url_for('index', error='token_exchange_failed'))
-    
+
     tokens = resp.json()
     session['spotify_access_token'] = tokens['access_token']
     session['spotify_refresh_token'] = tokens.get('refresh_token')
-    
+
     # Get user info
     headers = {"Authorization": f"Bearer {session['spotify_access_token']}"}
     r = spotify_session.get("https://api.spotify.com/v1/me", headers=headers, timeout=REQUEST_TIMEOUT)
@@ -730,7 +829,50 @@ def callback():
         g.user.spotify_user_id = me.get('id')
         g.user.spotify_display_name = me.get('display_name')
         db.session.commit()
-    
+
+    return redirect(url_for('index'))
+
+
+def _handle_soundcloud_callback(code):
+    """Handle SoundCloud OAuth callback"""
+    # Verify state parameter for CSRF protection
+    expected_state = session.pop('soundcloud_oauth_state', None)
+    received_state = request.args.get('state')
+    if not expected_state or expected_state != received_state:
+        return redirect(url_for('index', error='invalid_state'))
+
+    code_verifier = session.pop('soundcloud_code_verifier', None)
+    if not code_verifier:
+        return redirect(url_for('index', error='missing_code_verifier'))
+
+    token_url = "https://secure.soundcloud.com/oauth/token"
+    resp = sc_session.post(token_url, data={
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": SOUNDCLOUD_REDIRECT_URI,
+        "client_id": SOUNDCLOUD_CLIENT_ID,
+        "client_secret": SOUNDCLOUD_CLIENT_SECRET,
+        "code_verifier": code_verifier
+    }, timeout=REQUEST_TIMEOUT)
+
+    if resp.status_code != 200:
+        return redirect(url_for('index', error='token_exchange_failed'))
+
+    tokens = resp.json()
+    session['soundcloud_access_token'] = tokens['access_token']
+    session['soundcloud_refresh_token'] = tokens.get('refresh_token')
+
+    # Get user info
+    headers = {"Authorization": f"OAuth {session['soundcloud_access_token']}"}
+    r = sc_session.get("https://api.soundcloud.com/me", headers=headers, timeout=REQUEST_TIMEOUT)
+    if r.status_code == 200:
+        me = r.json()
+        session['soundcloud_user_urn'] = me.get('urn')
+        session['soundcloud_display_name'] = me.get('username')
+        g.user.soundcloud_user_urn = me.get('urn')
+        g.user.soundcloud_display_name = me.get('username')
+        db.session.commit()
+
     return redirect(url_for('index'))
 
 
@@ -740,6 +882,26 @@ def logout():
     """Logout user and clear session"""
     session.clear()
     return redirect(url_for('auth_login'))
+
+
+@app.route('/spotify/disconnect')
+@login_required
+def spotify_disconnect():
+    """Disconnect Spotify account from current session"""
+    session.pop('spotify_access_token', None)
+    session.pop('spotify_refresh_token', None)
+    session.pop('spotify_token_expiry', None)
+    return redirect(url_for('index'))
+
+
+@app.route('/soundcloud/disconnect')
+@login_required
+def soundcloud_disconnect():
+    """Disconnect SoundCloud account from current session"""
+    session.pop('soundcloud_access_token', None)
+    session.pop('soundcloud_refresh_token', None)
+    session.pop('soundcloud_token_expiry', None)
+    return redirect(url_for('index'))
 
 
 @app.route('/api/auth-status')
@@ -771,7 +933,9 @@ def auth_status():
         'monthly_limit': monthly_limit,
         'can_create_playlist': user.can_create_playlist() if user else False,
         'spotify_connected': 'spotify_access_token' in session,
-        'spotify_display_name': user.spotify_display_name if user else None
+        'spotify_display_name': user.spotify_display_name if user else None,
+        'soundcloud_connected': 'soundcloud_access_token' in session,
+        'soundcloud_display_name': user.soundcloud_display_name if user else None
     })
 
 
@@ -794,6 +958,7 @@ def admin_list_users():
             'is_admin': user.is_admin,
             'subscription_plan': getattr(user, 'subscription_plan', 'trial'),
             'spotify_display_name': user.spotify_display_name,
+            'soundcloud_display_name': user.soundcloud_display_name,
             'created_at': user.created_at.isoformat(),
             'last_updated': user.updated_at.isoformat() if user.updated_at else None,
             'usage_count': len(user.usages)
@@ -881,35 +1046,32 @@ def admin_send_invite():
 
 
 @app.route('/api/generate-playlist', methods=['POST'])
-@require_spotify_auth
+@require_any_music_auth
 def generate_playlist():
-    """Generate playlist from mood description"""
+    """Generate playlist from mood description (Spotify or SoundCloud)"""
     data = request.json
     mood = data.get('mood', '').strip()
     playlist_name = data.get('playlist_name', 'AI Generated Playlist').strip()
     track_count = data.get('track_count', 25)
-    
+
     try:
         track_count = int(track_count)
     except (ValueError, TypeError):
         track_count = 25
-    
+
     track_count = max(1, min(50, track_count))
-    
+
     if not mood:
         return jsonify({'error': 'Mood description is required'}), 400
 
-    # Validate prompt length (max 5 sentences)
     mood_sentences = count_sentences(mood)
     if mood_sentences > 5:
         return jsonify({'error': 'Mood description must be 5 sentences or less. Please shorten your description.'}), 400
 
-    # Validate playlist name length (max 5 sentences)
     playlist_name_sentences = count_sentences(playlist_name)
     if playlist_name_sentences > 5:
         return jsonify({'error': 'Playlist name must be 5 sentences or less. Please shorten your playlist name.'}), 400
 
-    # Check monthly playlist limit instead of credits
     if not g.user.can_create_playlist():
         playlists_this_month = g.user.get_playlists_this_month()
         monthly_limit = g.user.get_monthly_playlist_limit()
@@ -923,180 +1085,263 @@ def generate_playlist():
                 'error': f'You have reached your monthly limit of {monthly_limit} playlists.',
                 'upgrade_required': False
             }), 403
-    
+
+    # Detect provider — respect explicit choice from frontend
+    requested_provider = data.get('provider')
+    if requested_provider == 'spotify' and 'spotify_access_token' in session:
+        use_spotify = True
+        use_soundcloud = False
+    elif requested_provider == 'soundcloud' and 'soundcloud_access_token' in session:
+        use_spotify = False
+        use_soundcloud = True
+    else:
+        # Fallback to auto-detection
+        use_spotify = 'spotify_access_token' in session
+        use_soundcloud = 'soundcloud_access_token' in session and not use_spotify
+
     try:
-        access_token = get_valid_access_token()
-        if not access_token:
-            return jsonify({'error': 'Not authenticated with Spotify'}), 401
-        
-        # Determine how many tracks to request from GPT
-        gpt_track_request = track_count
-        gpt_track_request = min(gpt_track_request, 100)  # GPT can handle up to 100
-        
-        # Step 1: Get initial tracks from GPT
+        # Step 1: Get tracks from GPT (shared)
+        gpt_track_request = min(track_count, 100)
         results_dict = get_tracks_from_gpt(mood, gpt_track_request)
         tracks_from_gpt = results_dict.get("tracks", [])
         if not isinstance(tracks_from_gpt, list):
             raise ValueError("Unexpected response format from curator model.")
-        
         if not tracks_from_gpt:
             return jsonify({'error': 'No tracks returned from curator model'}), 400
-        
-        # Step 2: Search Spotify for tracks and collect them
-        track_uris = []
-        artist_ids = []
-        found_tracks = []
-        not_found = []
-        all_searched_tracks = set()  # Track URIs we've already searched to avoid duplicates
-        
-        for t in tracks_from_gpt:
-            matches = None
-            track_name = ""
-            artist_name = ""
-            try:
-                track_name = t.get("track", "")
-                artist_name = t.get("artist", "")
-                if not track_name or not artist_name:
-                    continue
-                # Get fresh token in case it was refreshed
-                access_token = session.get('spotify_access_token')
-                if not access_token:
-                    raise Exception("Spotify authentication lost. Please reconnect your account.")
-                matches = search_spotify_track(track_name, artist_name, access_token)
-            except KeyError as e:
-                app.logger.warning(f"Unexpected track format: {t}")
-                continue
-            except Exception as e:
-                # If search fails for one track, log and continue with others
-                app.logger.warning(f"Error searching for track {track_name} by {artist_name}: {str(e)}")
-                if track_name and artist_name:
-                    not_found.append({"artist": artist_name, "track": track_name})
-                continue
-            
-            if matches and matches[0]["uri"] not in all_searched_tracks:
-                track_uri = matches[0]["uri"]
-                all_searched_tracks.add(track_uri)
-                track_uris.append(track_uri)
-                # Get artist ID from search results
-                if "artist_id" in matches[0]:
-                    artist_ids.append(matches[0]["artist_id"])
-                found_tracks.append({
-                    "artist": matches[0]["artist"],
-                    "track": matches[0]["name"],
-                    "uri": track_uri
-                })
-            elif track_name and artist_name:
-                not_found.append({"artist": artist_name, "track": track_name})
-        
-        if not track_uris:
-            return jsonify({'error': 'No tracks found on Spotify'}), 400
-        
-        # Step 3: Create playlist
-        user_id = session['spotify_user_id']
-        # Get fresh token in case it was refreshed
-        access_token = session.get('spotify_access_token')
-        playlist_id = create_spotify_playlist(
-            user_id, 
-            playlist_name, 
-            "AI-generated playlist",
-            access_token
-        )
-        
-        # Step 4: Add tracks to playlist
-        # Get fresh token in case it was refreshed
-        access_token = session.get('spotify_access_token')
-        add_tracks_to_playlist(playlist_id, track_uris, access_token)
-        
-        # Step 5: Calculate metrics using efficient batch API calls
-        # Get fresh token in case it was refreshed
-        access_token = session.get('spotify_access_token')
-        indie_pct = 0.0
-        diversity_score = 0.0
-        genre_counts = {}
-        try:
-            # Batch API calls: 1-2 calls instead of 25-50 individual calls
-            indie_pct = indie_fraction(track_uris, access_token, threshold=50)
-            diversity_score, genre_counts = genre_diversity(artist_ids, access_token)
-        except Exception as metrics_error:
-            # If metrics fail, use defaults but don't fail the request
-            # Playlist was already created successfully
-            pass
 
-        # Record usage & update playlists remaining
-        new_playlists = max(0, g.user.playlists_remaining - 1)
-        try:
-            g.user.playlists_remaining = new_playlists
-            usage = PlaylistUsage(
-                user_id=g.user.id,
-                spotify_playlist_id=playlist_id
-            )
-            db.session.add(usage)
-            
-            # Store prompt anonymously (no user_id)
-            prompt_record = PlaylistPrompt(
-                prompt=mood
-            )
-            db.session.add(prompt_record)
-            
-            db.session.commit()
-        except Exception as db_error:
-            # If database commit fails, rollback and try once more
-            db.session.rollback()
-            try:
-                # Refresh user object and retry
-                db.session.refresh(g.user)
-                g.user.playlists_remaining = new_playlists
-                usage = PlaylistUsage(
-                    user_id=g.user.id,
-                    spotify_playlist_id=playlist_id
-                )
-                db.session.add(usage)
-                
-                # Store prompt anonymously (no user_id)
-                prompt_record = PlaylistPrompt(
-                    prompt=mood
-                )
-                db.session.add(prompt_record)
-                
-                db.session.commit()
-            except Exception:
-                # If retry also fails, log but don't fail the request
-                # The playlist was already created successfully
-                # Use the calculated credits value even if DB commit failed
-                pass
-        
-        return jsonify({
-            'success': True,
-            'playlist_id': playlist_id,
-            'playlist_name': playlist_name,
-            'tracks_found': len(found_tracks),
-            'tracks_not_found': len(not_found),
-            'tracks': found_tracks,
-            'not_found': not_found,
-            'metrics': {
-                'indie_fraction': round(indie_pct * 100, 1),
-                'diversity_score': round(diversity_score, 2),
-                'genre_counts': dict(genre_counts)
-            },
-            'playlists_remaining': new_playlists,
-            'requested_track_count': track_count,
-            'spotify_url': f"https://open.spotify.com/playlist/{playlist_id}"
-        })
-        
+        if use_spotify:
+            return _generate_spotify_playlist(tracks_from_gpt, playlist_name, mood, track_count)
+        else:
+            return _generate_soundcloud_playlist(tracks_from_gpt, playlist_name, mood, track_count)
+
     except Exception as e:
-        # Log the full error for debugging
         import traceback
         app.logger.error(f"Error generating playlist: {str(e)}")
         app.logger.error(traceback.format_exc())
-        # Return user-friendly error message
         error_message = str(e)
         if "403" in error_message or "Forbidden" in error_message:
-            error_message = "Spotify access denied. Please click 'Connect Spotify' to reconnect your account."
+            provider = "Spotify" if use_spotify else "SoundCloud"
+            error_message = f"{provider} access denied. Please reconnect your account."
         elif "401" in error_message or "Unauthorized" in error_message:
-            error_message = "Spotify authentication expired. Please reconnect your account."
+            provider = "Spotify" if use_spotify else "SoundCloud"
+            error_message = f"{provider} authentication expired. Please reconnect your account."
         elif "timeout" in error_message.lower():
             error_message = "Request timed out. Please try again."
         return jsonify({'error': error_message}), 500
+
+
+def _generate_spotify_playlist(tracks_from_gpt, playlist_name, mood, track_count):
+    """Generate playlist via Spotify"""
+    access_token = get_valid_spotify_token()
+    if not access_token:
+        return jsonify({'error': 'Not authenticated with Spotify'}), 401
+
+    # Search Spotify for tracks
+    track_uris = []
+    artist_ids = []
+    found_tracks = []
+    not_found = []
+    all_searched_tracks = set()
+
+    for t in tracks_from_gpt:
+        track_name = t.get("track", "")
+        artist_name = t.get("artist", "")
+        if not track_name or not artist_name:
+            continue
+        try:
+            access_token = session.get('spotify_access_token')
+            if not access_token:
+                raise Exception("Spotify authentication lost. Please reconnect your account.")
+            matches = search_spotify_track(track_name, artist_name, access_token)
+        except KeyError:
+            app.logger.warning(f"Unexpected track format: {t}")
+            continue
+        except Exception as e:
+            app.logger.warning(f"Error searching for track {track_name} by {artist_name}: {str(e)}")
+            if track_name and artist_name:
+                not_found.append({"artist": artist_name, "track": track_name})
+            continue
+
+        if matches and matches[0]["uri"] not in all_searched_tracks:
+            track_uri = matches[0]["uri"]
+            all_searched_tracks.add(track_uri)
+            track_uris.append(track_uri)
+            if "artist_id" in matches[0]:
+                artist_ids.append(matches[0]["artist_id"])
+            found_tracks.append({
+                "artist": matches[0]["artist"],
+                "track": matches[0]["name"],
+                "uri": track_uri
+            })
+        elif track_name and artist_name:
+            not_found.append({"artist": artist_name, "track": track_name})
+
+    if not track_uris:
+        return jsonify({'error': 'No tracks found on Spotify'}), 400
+
+    # Create playlist
+    user_id = session['spotify_user_id']
+    access_token = session.get('spotify_access_token')
+    playlist_id = create_spotify_playlist(user_id, playlist_name, "AI-generated playlist", access_token)
+
+    # Add tracks
+    access_token = session.get('spotify_access_token')
+    add_tracks_to_playlist(playlist_id, track_uris, access_token)
+
+    # Calculate metrics
+    access_token = session.get('spotify_access_token')
+    indie_pct = 0.0
+    diversity_score = 0.0
+    genre_counts = {}
+    try:
+        indie_pct = indie_fraction_spotify(track_uris, access_token, threshold=50)
+        diversity_score, genre_counts = genre_diversity_spotify(artist_ids, access_token)
+    except Exception:
+        pass
+
+    # Record usage
+    new_playlists = max(0, g.user.playlists_remaining - 1)
+    _record_usage(new_playlists, mood, spotify_playlist_id=playlist_id)
+
+    return jsonify({
+        'success': True,
+        'playlist_id': playlist_id,
+        'playlist_name': playlist_name,
+        'tracks_found': len(found_tracks),
+        'tracks_not_found': len(not_found),
+        'tracks': found_tracks,
+        'not_found': not_found,
+        'metrics': {
+            'indie_fraction': round(indie_pct * 100, 1),
+            'diversity_score': round(diversity_score, 2),
+            'genre_counts': dict(genre_counts)
+        },
+        'playlists_remaining': new_playlists,
+        'requested_track_count': track_count,
+        'spotify_url': f"https://open.spotify.com/playlist/{playlist_id}",
+        'playlist_url': f"https://open.spotify.com/playlist/{playlist_id}"
+    })
+
+
+def _generate_soundcloud_playlist(tracks_from_gpt, playlist_name, mood, track_count):
+    """Generate playlist via SoundCloud"""
+    access_token = get_valid_soundcloud_token()
+    if not access_token:
+        return jsonify({'error': 'Not authenticated with SoundCloud'}), 401
+
+    # Search SoundCloud for tracks
+    track_urns = []
+    found_tracks = []
+    track_metadata = []
+    not_found = []
+    all_searched_urns = set()
+
+    for t in tracks_from_gpt:
+        track_name = t.get("track", "")
+        artist_name = t.get("artist", "")
+        if not track_name or not artist_name:
+            continue
+        try:
+            access_token = session.get('soundcloud_access_token')
+            if not access_token:
+                raise Exception("SoundCloud authentication lost. Please reconnect your account.")
+            matches = search_soundcloud_track(track_name, artist_name, access_token)
+        except KeyError:
+            app.logger.warning(f"Unexpected track format: {t}")
+            continue
+        except Exception as e:
+            app.logger.warning(f"Error searching for track {track_name} by {artist_name}: {str(e)}")
+            if track_name and artist_name:
+                not_found.append({"artist": artist_name, "track": track_name})
+            continue
+
+        if matches and matches[0]["urn"] not in all_searched_urns:
+            match = matches[0]
+            track_urn = match["urn"]
+            all_searched_urns.add(track_urn)
+            track_urns.append(track_urn)
+            found_tracks.append({
+                "artist": match["artist"],
+                "track": match["name"],
+                "urn": track_urn
+            })
+            track_metadata.append({
+                "genre": match.get("genre", ""),
+                "playback_count": match.get("playback_count", 0)
+            })
+        elif track_name and artist_name:
+            not_found.append({"artist": artist_name, "track": track_name})
+
+    if not track_urns:
+        return jsonify({'error': 'No tracks found on SoundCloud'}), 400
+
+    # Create playlist (tracks included at creation time)
+    access_token = session.get('soundcloud_access_token')
+    playlist_urn, permalink_url = create_soundcloud_playlist(playlist_name, track_urns, access_token)
+
+    # Calculate metrics from collected search data
+    indie_pct = 0.0
+    diversity_score = 0.0
+    genre_counts = {}
+    try:
+        indie_pct = indie_fraction_soundcloud(track_metadata, threshold=100000)
+        diversity_score, genre_counts = genre_diversity_soundcloud(track_metadata)
+    except Exception:
+        pass
+
+    # Record usage
+    new_playlists = max(0, g.user.playlists_remaining - 1)
+    _record_usage(new_playlists, mood, soundcloud_playlist_id=playlist_urn)
+
+    return jsonify({
+        'success': True,
+        'playlist_id': playlist_urn,
+        'playlist_name': playlist_name,
+        'tracks_found': len(found_tracks),
+        'tracks_not_found': len(not_found),
+        'tracks': found_tracks,
+        'not_found': not_found,
+        'metrics': {
+            'indie_fraction': round(indie_pct * 100, 1),
+            'diversity_score': round(diversity_score, 2),
+            'genre_counts': dict(genre_counts)
+        },
+        'playlists_remaining': new_playlists,
+        'requested_track_count': track_count,
+        'soundcloud_url': permalink_url,
+        'playlist_url': permalink_url
+    })
+
+
+def _record_usage(new_playlists, mood, spotify_playlist_id=None, soundcloud_playlist_id=None):
+    """Record playlist usage in DB"""
+    try:
+        g.user.playlists_remaining = new_playlists
+        usage = PlaylistUsage(
+            user_id=g.user.id,
+            spotify_playlist_id=spotify_playlist_id,
+            soundcloud_playlist_id=soundcloud_playlist_id
+        )
+        db.session.add(usage)
+        prompt_record = PlaylistPrompt(prompt=mood)
+        db.session.add(prompt_record)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        try:
+            db.session.refresh(g.user)
+            g.user.playlists_remaining = new_playlists
+            usage = PlaylistUsage(
+                user_id=g.user.id,
+                spotify_playlist_id=spotify_playlist_id,
+                soundcloud_playlist_id=soundcloud_playlist_id
+            )
+            db.session.add(usage)
+            prompt_record = PlaylistPrompt(prompt=mood)
+            db.session.add(prompt_record)
+            db.session.commit()
+        except Exception:
+            pass
 
 
 # Helper functions from notebook
@@ -1170,15 +1415,14 @@ def search_spotify_track(track_name, artist_name, access_token):
     url = "https://api.spotify.com/v1/search"
     headers = {"Authorization": f"Bearer {access_token}"}
     params = {"q": q, "type": "track", "limit": 3}
-    
+
     try:
         r = spotify_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.Timeout:
         raise Exception("Spotify API request timed out. Please try again.")
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error connecting to Spotify API: {str(e)}")
-    
-    # If token expired (401) or forbidden (403), refresh and retry
+
     if r.status_code == 401:
         new_token = refresh_spotify_token()
         if new_token:
@@ -1192,15 +1436,12 @@ def search_spotify_track(track_name, artist_name, access_token):
         else:
             raise Exception("Spotify authentication expired. Please reconnect your account.")
     elif r.status_code == 403:
-        # 403 Forbidden - token might be invalid or app permissions changed
-        # Try refreshing token first
         new_token = refresh_spotify_token()
         if new_token:
             headers = {"Authorization": f"Bearer {new_token}"}
             try:
                 r = spotify_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
                 if r.status_code == 403:
-                    # Clear Spotify session to force reconnection
                     session.pop('spotify_access_token', None)
                     session.pop('spotify_refresh_token', None)
                     session.pop('spotify_user_id', None)
@@ -1211,18 +1452,16 @@ def search_spotify_track(track_name, artist_name, access_token):
             except requests.exceptions.RequestException as e:
                 raise Exception(f"Error connecting to Spotify API: {str(e)}")
         else:
-            # Clear Spotify session to force reconnection
             session.pop('spotify_access_token', None)
             session.pop('spotify_refresh_token', None)
             session.pop('spotify_user_id', None)
             session.pop('spotify_display_name', None)
             raise Exception("Spotify access denied. Please click 'Connect Spotify' to reconnect your account.")
-    
+
     r.raise_for_status()
-    
+
     items = r.json().get("tracks", {}).get("items", [])
     results = []
-    
     for item in items:
         results.append({
             "name": item["name"],
@@ -1231,7 +1470,6 @@ def search_spotify_track(track_name, artist_name, access_token):
             "uri": item["uri"],
             "id": item["id"]
         })
-    
     return results
 
 
@@ -1253,8 +1491,7 @@ def create_spotify_playlist(user_id, name, description, access_token):
         raise Exception("Spotify API request timed out. Please try again.")
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error connecting to Spotify API: {str(e)}")
-    
-    # If token expired, refresh and retry
+
     if r.status_code == 401:
         new_token = refresh_spotify_token()
         if new_token:
@@ -1267,7 +1504,7 @@ def create_spotify_playlist(user_id, name, description, access_token):
                 raise Exception(f"Error connecting to Spotify API: {str(e)}")
         else:
             r.raise_for_status()
-    
+
     r.raise_for_status()
     return r.json()["id"]
 
@@ -1288,8 +1525,7 @@ def add_tracks_to_playlist(playlist_id, track_uris, access_token):
             raise Exception("Spotify API request timed out. Please try again.")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Error connecting to Spotify API: {str(e)}")
-        
-        # If token expired, refresh and retry
+
         if r.status_code == 401:
             new_token = refresh_spotify_token()
             if new_token:
@@ -1302,91 +1538,31 @@ def add_tracks_to_playlist(playlist_id, track_uris, access_token):
                     raise Exception(f"Error connecting to Spotify API: {str(e)}")
             else:
                 r.raise_for_status()
-        
+
         r.raise_for_status()
 
 
-def get_spotify_track(track_id, access_token):
-    """Fetch track info from Spotify."""
-    url = f"https://api.spotify.com/v1/tracks/{track_id}"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    try:
-        r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-    except requests.exceptions.Timeout:
-        raise Exception("Spotify API request timed out. Please try again.")
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Error connecting to Spotify API: {str(e)}")
-    
-    # If token expired, refresh and retry
-    if r.status_code == 401:
-        new_token = refresh_spotify_token()
-        if new_token:
-            headers = {"Authorization": f"Bearer {new_token}"}
-            try:
-                r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-            except requests.exceptions.Timeout:
-                raise Exception("Spotify API request timed out. Please try again.")
-            except requests.exceptions.RequestException as e:
-                raise Exception(f"Error connecting to Spotify API: {str(e)}")
-        else:
-            r.raise_for_status()
-    
-    r.raise_for_status()
-    return r.json()
-
-
-def get_spotify_artist(artist_id, access_token):
-    """Fetch artist info from Spotify."""
-    url = f"https://api.spotify.com/v1/artists/{artist_id}"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    try:
-        r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-    except requests.exceptions.Timeout:
-        raise Exception("Spotify API request timed out. Please try again.")
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Error connecting to Spotify API: {str(e)}")
-    
-    # If token expired, refresh and retry
-    if r.status_code == 401:
-        new_token = refresh_spotify_token()
-        if new_token:
-            headers = {"Authorization": f"Bearer {new_token}"}
-            try:
-                r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-            except requests.exceptions.Timeout:
-                raise Exception("Spotify API request timed out. Please try again.")
-            except requests.exceptions.RequestException as e:
-                raise Exception(f"Error connecting to Spotify API: {str(e)}")
-        else:
-            r.raise_for_status()
-    
-    r.raise_for_status()
-    return r.json()
-
-
 def get_tracks_batch(track_ids, access_token):
-    """Fetch multiple tracks in a single API call (max 50 tracks per request)."""
+    """Fetch multiple tracks in a single Spotify API call (max 50 per request)."""
     if not track_ids:
         return []
-    
-    # Spotify API allows up to 50 IDs per request
+
     batch_size = 50
     all_tracks = []
-    
+
     for i in range(0, len(track_ids), batch_size):
         batch = track_ids[i:i+batch_size]
         ids_param = ','.join(batch)
         url = f"https://api.spotify.com/v1/tracks?ids={ids_param}"
         headers = {"Authorization": f"Bearer {access_token}"}
-        
+
         try:
             r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout:
             raise Exception("Spotify API request timed out. Please try again.")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Error connecting to Spotify API: {str(e)}")
-        
-        # If token expired, refresh and retry
+
         if r.status_code == 401:
             new_token = refresh_spotify_token()
             if new_token:
@@ -1399,38 +1575,36 @@ def get_tracks_batch(track_ids, access_token):
                     raise Exception(f"Error connecting to Spotify API: {str(e)}")
             else:
                 r.raise_for_status()
-        
+
         r.raise_for_status()
         tracks_data = r.json().get("tracks", [])
         all_tracks.extend(tracks_data)
-    
+
     return all_tracks
 
 
 def get_artists_batch(artist_ids, access_token):
-    """Fetch multiple artists in a single API call (max 50 artists per request)."""
+    """Fetch multiple artists in a single Spotify API call (max 50 per request)."""
     if not artist_ids:
         return []
-    
-    # Remove duplicates and limit to 50 per batch
-    unique_artist_ids = list(dict.fromkeys(artist_ids))  # Preserves order, removes duplicates
+
+    unique_artist_ids = list(dict.fromkeys(artist_ids))
     batch_size = 50
     all_artists = []
-    
+
     for i in range(0, len(unique_artist_ids), batch_size):
         batch = unique_artist_ids[i:i+batch_size]
         ids_param = ','.join(batch)
         url = f"https://api.spotify.com/v1/artists?ids={ids_param}"
         headers = {"Authorization": f"Bearer {access_token}"}
-        
+
         try:
             r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout:
             raise Exception("Spotify API request timed out. Please try again.")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Error connecting to Spotify API: {str(e)}")
-        
-        # If token expired, refresh and retry
+
         if r.status_code == 401:
             new_token = refresh_spotify_token()
             if new_token:
@@ -1443,147 +1617,218 @@ def get_artists_batch(artist_ids, access_token):
                     raise Exception(f"Error connecting to Spotify API: {str(e)}")
             else:
                 r.raise_for_status()
-        
+
         r.raise_for_status()
         artists_data = r.json().get("artists", [])
         all_artists.extend(artists_data)
-    
+
     return all_artists
 
 
-def indie_fraction(track_uris, access_token, threshold=50):
-    """Calculate fraction of indie tracks (popularity < threshold) using efficient batch API."""
+def indie_fraction_spotify(track_uris, access_token, threshold=50):
+    """Calculate fraction of indie tracks (popularity < threshold) using Spotify batch API."""
     if not track_uris:
         return 0.0
-    
-    # Extract track IDs from URIs
+
     track_ids = [uri.split(":")[-1] for uri in track_uris]
-    
-    # Fetch all tracks in batch(es) - 1-2 API calls instead of 25-50
     tracks_data = get_tracks_batch(track_ids, access_token)
-    
+
     if not tracks_data:
         return 0.0
-    
+
     count_indie = 0
     total = len(tracks_data)
-    
     for track in tracks_data:
         popularity = track.get("popularity", 0)
         if popularity < threshold:
             count_indie += 1
-    
+
     return count_indie / total if total > 0 else 0.0
 
 
-def genre_diversity(artist_ids, access_token):
-    """Calculate genre diversity score using efficient batch API."""
+def genre_diversity_spotify(artist_ids, access_token):
+    """Calculate genre diversity score using Spotify batch API."""
     if not artist_ids:
         return 0.0, {}
-    
-    # Fetch all artists in batch(es) - 1 API call instead of 25-50
+
     artists_data = get_artists_batch(artist_ids, access_token)
-    
     if not artists_data:
         return 0.0, {}
-    
+
     all_genres = []
     for artist in artists_data:
         genres = artist.get("genres", [])
         all_genres.extend(genres)
-    
+
     if not all_genres:
         return 0.0, {}
-    
+
     genre_counts = Counter(all_genres)
-    
     total_genres = len(all_genres)
     entropy = 0.0
     for count in genre_counts.values():
         p = count / total_genres
         if p > 0:
             entropy -= p * math.log(p)
-    
+
     max_entropy = math.log(len(genre_counts)) if len(genre_counts) > 0 else 1
-    diversity_score = 1 - (entropy / max_entropy if max_entropy > 0 else 0.0)    
+    diversity_score = 1 - (entropy / max_entropy if max_entropy > 0 else 0.0)
     return diversity_score, genre_counts
 
 
-def get_spotify_recommendations(seed_tracks, access_token, limit=20, min_danceability=None, 
-                                max_danceability=None, min_tempo=None, max_tempo=None):
-    """
-    Get track recommendations from Spotify based on seed tracks and audio feature filters.
-    
-    Args:
-        seed_tracks: List of track IDs to use as seeds (1-5 tracks)
-        access_token: Spotify access token
-        limit: Number of recommendations (1-100)
-        min_danceability, max_danceability: Danceability range (0.0-1.0)
-        min_tempo, max_tempo: Tempo range (BPM)
-    
-    Returns:
-        List of recommended tracks with their information
-    """
-    if not seed_tracks:
-        return []
-    
-    # Spotify allows 1-5 seed tracks
-    seed_tracks = seed_tracks[:5]
-    limit = max(1, min(100, limit))
-    
-    url = "https://api.spotify.com/v1/recommendations"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    params = {
-        "seed_tracks": ",".join(seed_tracks),
-        "limit": limit
-    }
-    
-    # Add audio feature filters if provided
-    if min_danceability is not None:
-        params["min_danceability"] = min_danceability
-    if max_danceability is not None:
-        params["max_danceability"] = max_danceability
-    if min_tempo is not None:
-        params["min_tempo"] = min_tempo
-    if max_tempo is not None:
-        params["max_tempo"] = max_tempo
-    
+def search_soundcloud_track(track_name, artist_name, access_token):
+    """Search SoundCloud for a track by name and artist."""
+    q = f"{track_name} {artist_name}"
+    url = "https://api.soundcloud.com/tracks"
+    headers = {"Authorization": f"OAuth {access_token}"}
+    params = {"q": q, "limit": 5}
+
     try:
-        r = spotify_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+        r = sc_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.Timeout:
-        raise Exception("Spotify API request timed out. Please try again.")
+        raise Exception("SoundCloud API request timed out. Please try again.")
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error connecting to Spotify API: {str(e)}")
-    
+        raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+
+    # If token expired (401) or forbidden (403), refresh and retry
+    if r.status_code == 401:
+        new_token = refresh_soundcloud_token()
+        if new_token:
+            headers = {"Authorization": f"OAuth {new_token}"}
+            try:
+                r = sc_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.Timeout:
+                raise Exception("SoundCloud API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+        else:
+            raise Exception("SoundCloud authentication expired. Please reconnect your account.")
+    elif r.status_code == 403:
+        new_token = refresh_soundcloud_token()
+        if new_token:
+            headers = {"Authorization": f"OAuth {new_token}"}
+            try:
+                r = sc_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+                if r.status_code == 403:
+                    session.pop('soundcloud_access_token', None)
+                    session.pop('soundcloud_refresh_token', None)
+                    session.pop('soundcloud_user_urn', None)
+                    session.pop('soundcloud_display_name', None)
+                    raise Exception("SoundCloud access denied. Please click 'Connect SoundCloud' to reconnect your account.")
+            except requests.exceptions.Timeout:
+                raise Exception("SoundCloud API request timed out. Please try again.")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+        else:
+            session.pop('soundcloud_access_token', None)
+            session.pop('soundcloud_refresh_token', None)
+            session.pop('soundcloud_user_urn', None)
+            session.pop('soundcloud_display_name', None)
+            raise Exception("SoundCloud access denied. Please click 'Connect SoundCloud' to reconnect your account.")
+
+    r.raise_for_status()
+
+    items = r.json() if isinstance(r.json(), list) else r.json().get("collection", [])
+    results = []
+
+    for item in items:
+        user_info = item.get("user", {})
+        results.append({
+            "name": item.get("title", ""),
+            "artist": user_info.get("username", "Unknown"),
+            "artist_urn": user_info.get("urn", ""),
+            "urn": item.get("urn", ""),
+            "genre": item.get("genre", ""),
+            "playback_count": item.get("playback_count", 0),
+            "favoritings_count": item.get("favoritings_count", 0),
+            "id": item.get("id", "")
+        })
+
+    return results
+
+
+def create_soundcloud_playlist(name, track_urns, access_token):
+    """Create a private playlist on SoundCloud with tracks included."""
+    url = "https://api.soundcloud.com/playlists"
+    headers = {
+        "Authorization": f"OAuth {access_token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "playlist": {
+            "title": name,
+            "sharing": "private",
+            "tracks": [{"urn": urn} for urn in track_urns]
+        }
+    }
+    try:
+        r = sc_session.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise Exception("SoundCloud API request timed out. Please try again.")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
+
     # If token expired, refresh and retry
     if r.status_code == 401:
-        new_token = refresh_spotify_token()
+        new_token = refresh_soundcloud_token()
         if new_token:
-            headers = {"Authorization": f"Bearer {new_token}"}
+            headers = {"Authorization": f"OAuth {new_token}", "Content-Type": "application/json"}
             try:
-                r = spotify_session.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+                r = sc_session.post(url, headers=headers, json=body, timeout=REQUEST_TIMEOUT)
             except requests.exceptions.Timeout:
-                raise Exception("Spotify API request timed out. Please try again.")
+                raise Exception("SoundCloud API request timed out. Please try again.")
             except requests.exceptions.RequestException as e:
-                raise Exception(f"Error connecting to Spotify API: {str(e)}")
+                raise Exception(f"Error connecting to SoundCloud API: {str(e)}")
         else:
             r.raise_for_status()
-    
+
     r.raise_for_status()
-    recommendations_data = r.json().get("tracks", [])
-    
-    # Format recommendations
-    recommendations = []
-    for track in recommendations_data:
-        recommendations.append({
-            "artist": track["artists"][0]["name"] if track.get("artists") else "Unknown",
-            "track": track["name"],
-            "uri": track["uri"],
-            "id": track["id"],
-            "artist_id": track["artists"][0]["id"] if track.get("artists") else None
-        })
-    
-    return recommendations
+    data = r.json()
+    return data.get("urn", str(data.get("id", ""))), data.get("permalink_url", "")
+
+
+def indie_fraction_soundcloud(track_data_list, threshold=100000):
+    """Calculate fraction of indie tracks (playback_count < threshold) from SoundCloud search results."""
+    if not track_data_list:
+        return 0.0
+
+    count_indie = 0
+    total = len(track_data_list)
+
+    for track in track_data_list:
+        playback_count = track.get("playback_count", 0) or 0
+        if playback_count < threshold:
+            count_indie += 1
+
+    return count_indie / total if total > 0 else 0.0
+
+
+def genre_diversity_soundcloud(track_data_list):
+    """Calculate genre diversity score from SoundCloud search result genre fields."""
+    if not track_data_list:
+        return 0.0, {}
+
+    all_genres = []
+    for track in track_data_list:
+        genre = (track.get("genre") or "").strip()
+        if genre:
+            all_genres.append(genre.lower())
+
+    if not all_genres:
+        return 0.0, {}
+
+    genre_counts = Counter(all_genres)
+
+    total_genres = len(all_genres)
+    entropy = 0.0
+    for count in genre_counts.values():
+        p = count / total_genres
+        if p > 0:
+            entropy -= p * math.log(p)
+
+    max_entropy = math.log(len(genre_counts)) if len(genre_counts) > 0 else 1
+    diversity_score = 1 - (entropy / max_entropy if max_entropy > 0 else 0.0)
+    return diversity_score, genre_counts
 
 
 @app.route('/api/my-playlists', methods=['GET'])
@@ -1592,44 +1837,69 @@ def get_my_playlists():
     """Get all playlists created by the current user"""
     try:
         playlists = PlaylistUsage.query.filter_by(user_id=g.user.id).order_by(PlaylistUsage.created_at.desc()).all()
-        
+
         playlist_data = []
-        access_token = get_valid_access_token()
-        
+        spotify_token = get_valid_spotify_token()
+        soundcloud_token = get_valid_soundcloud_token()
+
         for usage in playlists:
-            if usage.spotify_playlist_id and access_token:
-                try:
-                    # Get playlist details from Spotify
-                    url = f"https://api.spotify.com/v1/playlists/{usage.spotify_playlist_id}"
-                    headers = {"Authorization": f"Bearer {access_token}"}
-                    r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-                    
-                    if r.status_code == 401:
-                        new_token = refresh_spotify_token()
-                        if new_token:
-                            headers = {"Authorization": f"Bearer {new_token}"}
-                            r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-                    
-                    if r.status_code == 200:
-                        playlist_info = r.json()
-                        playlist_data.append({
-                            'id': usage.id,
-                            'spotify_playlist_id': usage.spotify_playlist_id,
-                            'name': playlist_info.get('name', 'Untitled Playlist'),
-                            'created_at': usage.created_at.isoformat(),
-                            'spotify_url': f"https://open.spotify.com/playlist/{usage.spotify_playlist_id}"
-                        })
-                except Exception as e:
-                    # If we can't fetch from Spotify, still include basic info
-                    app.logger.warning(f"Error fetching playlist {usage.spotify_playlist_id}: {str(e)}")
-                    playlist_data.append({
-                        'id': usage.id,
-                        'spotify_playlist_id': usage.spotify_playlist_id,
-                        'name': 'Untitled Playlist',
-                        'created_at': usage.created_at.isoformat(),
-                        'spotify_url': f"https://open.spotify.com/playlist/{usage.spotify_playlist_id}"
-                    })
-        
+            # Spotify playlists
+            if usage.spotify_playlist_id:
+                sp_id = usage.spotify_playlist_id
+                sp_url = f"https://open.spotify.com/playlist/{sp_id}"
+                name = 'Untitled Playlist'
+                if spotify_token:
+                    try:
+                        url = f"https://api.spotify.com/v1/playlists/{sp_id}"
+                        headers = {"Authorization": f"Bearer {spotify_token}"}
+                        r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                        if r.status_code == 401:
+                            new_token = refresh_spotify_token()
+                            if new_token:
+                                headers = {"Authorization": f"Bearer {new_token}"}
+                                r = spotify_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                        if r.status_code == 200:
+                            name = r.json().get('name', name)
+                    except Exception as e:
+                        app.logger.warning(f"Error fetching Spotify playlist {sp_id}: {str(e)}")
+                playlist_data.append({
+                    'id': usage.id,
+                    'spotify_playlist_id': sp_id,
+                    'name': name,
+                    'created_at': usage.created_at.isoformat(),
+                    'spotify_url': sp_url,
+                    'playlist_url': sp_url
+                })
+            # SoundCloud playlists
+            elif usage.soundcloud_playlist_id:
+                sc_id = usage.soundcloud_playlist_id
+                name = 'Untitled Playlist'
+                sc_url = ''
+                if soundcloud_token:
+                    try:
+                        url = f"https://api.soundcloud.com/playlists/{sc_id}"
+                        headers = {"Authorization": f"OAuth {soundcloud_token}"}
+                        r = sc_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                        if r.status_code == 401:
+                            new_token = refresh_soundcloud_token()
+                            if new_token:
+                                headers = {"Authorization": f"OAuth {new_token}"}
+                                r = sc_session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+                        if r.status_code == 200:
+                            playlist_info = r.json()
+                            name = playlist_info.get('title', name)
+                            sc_url = playlist_info.get('permalink_url', '')
+                    except Exception as e:
+                        app.logger.warning(f"Error fetching SoundCloud playlist {sc_id}: {str(e)}")
+                playlist_data.append({
+                    'id': usage.id,
+                    'soundcloud_playlist_id': sc_id,
+                    'name': name,
+                    'created_at': usage.created_at.isoformat(),
+                    'soundcloud_url': sc_url,
+                    'playlist_url': sc_url
+                })
+
         return jsonify({'playlists': playlist_data})
     except Exception as e:
         app.logger.error(f"Error fetching playlists: {str(e)}")
