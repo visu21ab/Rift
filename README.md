@@ -108,4 +108,4 @@ Drift/
 MIT License
 
 ---
-**This is solely an indie project I built for frinds and family <3**
+**This is solely a project I built for frinds and family <3**
