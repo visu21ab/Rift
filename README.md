@@ -69,10 +69,6 @@ The analytics system uses Spotify's track popularity scores (0-100) and artist g
 4. **Generate Playlists**: Enter a mood description, customize playlist name and track count (1-50), and generate
 5. **View Analytics**: See indie percentage, genre diversity, and genre breakdown for each playlist
 
-### Subscription Tiers
-- **Trial**: 3 playlists per month (free)
-- **Premium**: 25 playlists per month (49 SEK/month via Stripe, unused for now)
-
 ## 📁 Project Structure
 
 ```
@@ -101,7 +97,6 @@ Drift/
 - **APIs**: Spotify Web API, Stripe API
 - **Database**: PostgreSQL (via Supabase)
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
-- **Payment**: Stripe Subscriptions
 
 ## 📄 License
 
